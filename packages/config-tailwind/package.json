@@ -1,0 +1,11 @@
+{
+  "name": "@talimy/tailwind-config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./tailwind.config.ts",
+  "exports": {
+    ".": "./tailwind.config.ts",
+    "./tailwind": "./tailwind.config.ts"
+  }
+}

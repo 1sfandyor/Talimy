@@ -1,0 +1,13 @@
+{
+  "name": "@talimy/eslint-config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./base.js",
+  "exports": {
+    ".": "./base.js",
+    "./base": "./base.js",
+    "./next": "./next.js",
+    "./nest": "./nest.js"
+  }
+}

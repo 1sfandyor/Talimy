@@ -1,0 +1,12 @@
+{
+  "extends": "../config-typescript/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@talimy/shared": ["./src/index.ts"],
+      "@talimy/shared/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

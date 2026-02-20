@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../packages/config-typescript/nestjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "verbatimModuleSyntax": false,
+    "paths": {
+      "@/*": ["src/*"],
+      "@talimy/shared": ["../../packages/shared/src/index.ts"],
+      "@talimy/shared/*": ["../../packages/shared/src/*"],
+      "@talimy/database": ["../../packages/database/src/index.ts"],
+      "@talimy/database/*": ["../../packages/database/src/*"],
+      "@talimy/trpc": ["../../packages/trpc/src/index.ts"],
+      "@talimy/trpc/*": ["../../packages/trpc/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+}

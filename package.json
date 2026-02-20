@@ -1,26 +1,38 @@
 {
-  "name": "my-app",
+  "name": "talimy",
   "version": "0.0.1",
   "private": true,
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "typecheck": "turbo typecheck",
+    "prepare": "git config core.hooksPath .husky",
+    "hooks:install": "git config core.hooksPath .husky",
+    "infra:check": "bun run tooling/scripts/check-remote-infra.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "db:generate": "turbo db:generate --filter=@talimy/database",
+    "db:migrate": "turbo db:migrate --filter=@talimy/database",
+    "db:seed": "turbo db:seed --filter=@talimy/database",
+    "db:studio": "turbo db:studio --filter=@talimy/database",
+    "test": "turbo test",
+    "test:e2e": "turbo test:e2e"
   },
   "devDependencies": {
-    "@workspace/eslint-config": "workspace:*",
-    "@workspace/typescript-config": "workspace:*",
+    "@talimy/eslint-config": "workspace:*",
+    "@talimy/typescript-config": "workspace:*",
     "prettier": "^3.8.1",
+    "shadcn": "^3.8.5",
     "turbo": "^2.8.1",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.4.1",
+  "packageManager": "bun@1.3.9",
   "engines": {
     "node": ">=20"
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tooling/*"
   ]
 }
