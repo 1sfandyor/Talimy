@@ -10510,8 +10510,34 @@ Permify)</span></p>
 
 <p class=MsoNormal style='margin-bottom:6.0pt'>&nbsp;</p>
 
+<div style='border:none;border-bottom:solid #1B8A4C 1.0pt;padding:0in 0in 2.0pt 0in'>
+
+<p class=MsoNormal style='margin-top:15.0pt;margin-right:0in;margin-bottom:
+6.0pt;margin-left:0in;border:none;padding:0in'><b><span style='font-size:12.0pt;
+color:#1B8A4C'>Operational Note (2026-02-21): Backend Service Structure</span></b></p>
+
+</div>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>NestJS backend uchun thin-service pattern majburiy: controller -&gt; service -&gt; repository.</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>Katta query/business logic `*.repository.ts`, mapping `*.mapper.ts`, return-shape `*.types.ts` ga ajratiladi.</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>`*.service.ts` fayl 300+ qatorga yaqinlashganda modul bo'yicha refactor qilinadi (minimal-diff, behavior o'zgarmasdan).</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>Amalda qo'llangan modullar: auth, tenants, users, teachers, students (service + repository + mapper/types).</span></p>
+
+<p class=MsoNormal style='margin-bottom:6.0pt'>&nbsp;</p>
+
 <table class=MsoNormalTable border=1 cellspacing=0 cellpadding=0 width=624
- style='width:6.5in;margin-left:-.35pt;border-collapse:collapse;border:none'>
+style='width:6.5in;margin-left:-.35pt;border-collapse:collapse;border:none'>
  <tr>
   <td valign=top style='border:solid windowtext 1.0pt;background:#EAF7EE;
   padding:6.0pt 10.0pt 6.0pt 10.0pt'>
