@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto"
-
+import { db, payments, students, teachers, tenants } from "@talimy/database"
+import { and, asc, desc, eq, ilike, isNull, ne, or, type SQL, sql } from "drizzle-orm"
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 
 import { CreateTenantDto } from "./dto/create-tenant.dto"
@@ -7,10 +7,10 @@ import { ListTenantsQueryDto } from "./dto/list-tenants-query.dto"
 import { UpdateTenantBillingDto } from "./dto/update-tenant-billing.dto"
 import { UpdateTenantDto } from "./dto/update-tenant.dto"
 
-type TenantStatus = "active" | "inactive"
-type BillingPlan = "free" | "basic" | "premium" | "enterprise"
+type TenantStatus = "active" | "inactive" | "suspended"
+type BillingPlan = "free" | "basic" | "pro" | "enterprise"
 
-type TenantRecord = {
+type TenantView = {
   id: string
   name: string
   slug: string
@@ -21,9 +21,9 @@ type TenantRecord = {
   adminLimit: number
   monthlyPrice: number
   currency: string
-  studentsCount: number
-  teachersCount: number
-  revenueTotal: number
+  studentsCount?: number
+  teachersCount?: number
+  revenueTotal?: number
   createdAt: Date
   updatedAt: Date
   deactivatedAt: Date | null
@@ -31,76 +31,49 @@ type TenantRecord = {
 
 @Injectable()
 export class TenantsService {
-  private readonly tenants: TenantRecord[] = [
-    {
-      id: "tenant_demo_talimy_school",
-      name: "Talimy Demo School",
-      slug: "talimy-demo",
-      genderPolicy: "mixed",
-      status: "active",
-      billingPlan: "basic",
-      studentLimit: 500,
-      adminLimit: 30,
-      monthlyPrice: 50,
-      currency: "USD",
-      studentsCount: 120,
-      teachersCount: 18,
-      revenueTotal: 600,
-      createdAt: new Date("2026-02-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-02-01T00:00:00.000Z"),
-      deactivatedAt: null,
-    },
-  ]
-
-  list(query: ListTenantsQueryDto): {
-    data: TenantRecord[]
+  async list(query: ListTenantsQueryDto): Promise<{
+    data: TenantView[]
     meta: { page: number; limit: number; total: number; totalPages: number }
-  } {
-    const normalizedSearch = query.search?.trim().toLowerCase()
+  }> {
+    const filters: SQL[] = [isNull(tenants.deletedAt)]
 
-    let filtered = this.tenants.filter((tenant) => {
-      if (query.status && tenant.status !== query.status) {
-        return false
+    if (query.status) {
+      filters.push(eq(tenants.status, query.status))
+    }
+    if (query.billingPlan) {
+      filters.push(eq(tenants.plan, query.billingPlan))
+    }
+    if (query.search) {
+      const search = query.search.trim()
+      if (search.length > 0) {
+        filters.push(or(ilike(tenants.name, `%${search}%`), ilike(tenants.slug, `%${search}%`))!)
       }
-      if (query.billingPlan && tenant.billingPlan !== query.billingPlan) {
-        return false
-      }
-      if (
-        normalizedSearch &&
-        !tenant.name.toLowerCase().includes(normalizedSearch) &&
-        !tenant.slug.toLowerCase().includes(normalizedSearch)
-      ) {
-        return false
-      }
-      return true
-    })
+    }
 
-    const sortField = query.sort ?? "createdAt"
-    const orderFactor = query.order === "asc" ? 1 : -1
-    filtered = [...filtered].sort((a, b) => {
-      switch (sortField) {
-        case "name":
-          return a.name.localeCompare(b.name) * orderFactor
-        case "slug":
-          return a.slug.localeCompare(b.slug) * orderFactor
-        case "studentsCount":
-          return (a.studentsCount - b.studentsCount) * orderFactor
-        case "monthlyPrice":
-          return (a.monthlyPrice - b.monthlyPrice) * orderFactor
-        case "createdAt":
-        default:
-          return (a.createdAt.getTime() - b.createdAt.getTime()) * orderFactor
-      }
-    })
+    const whereExpr = and(...filters)
+    const sortColumn = this.resolveSortColumn(query.sort)
+    const orderExpr = query.order === "asc" ? asc(sortColumn) : desc(sortColumn)
 
-    const total = filtered.length
+    const totalRows = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(tenants)
+      .where(whereExpr)
+    const total = totalRows[0]?.total ?? 0
+
     const totalPages = Math.max(1, Math.ceil(total / query.limit))
     const page = Math.min(query.page, totalPages)
-    const start = (page - 1) * query.limit
-    const data = filtered.slice(start, start + query.limit)
+    const offset = (page - 1) * query.limit
+
+    const rows = await db
+      .select()
+      .from(tenants)
+      .where(whereExpr)
+      .orderBy(orderExpr)
+      .limit(query.limit)
+      .offset(offset)
 
     return {
-      data,
+      data: rows.map((row) => this.toTenantView(row)),
       meta: {
         page,
         limit: query.limit,
@@ -110,102 +83,125 @@ export class TenantsService {
     }
   }
 
-  getById(id: string): TenantRecord {
-    const found = this.tenants.find((tenant) => tenant.id === id)
-    if (!found) {
-      throw new NotFoundException("Tenant not found")
-    }
-    return found
+  async getById(id: string): Promise<TenantView> {
+    const row = await this.findTenantOrThrow(id)
+    return this.toTenantView(row)
   }
 
-  create(payload: CreateTenantDto): TenantRecord {
-    this.assertUniqueSlug(payload.slug)
+  async create(payload: CreateTenantDto): Promise<TenantView> {
+    await this.assertUniqueSlug(payload.slug)
 
-    const now = new Date()
-    const billingPlan = payload.billingPlan ?? "free"
-    const next: TenantRecord = {
-      id: randomUUID(),
-      name: payload.name,
-      slug: payload.slug,
-      genderPolicy: payload.genderPolicy,
-      status: "active",
-      billingPlan,
-      studentLimit: payload.studentLimit ?? this.defaultStudentLimitByPlan(billingPlan),
-      adminLimit: payload.adminLimit ?? this.defaultAdminLimitByPlan(billingPlan),
-      monthlyPrice: payload.monthlyPrice ?? this.defaultPriceByPlan(billingPlan),
-      currency: payload.currency ?? "USD",
-      studentsCount: 0,
-      teachersCount: 0,
-      revenueTotal: 0,
-      createdAt: now,
-      updatedAt: now,
-      deactivatedAt: null,
+    const plan = payload.billingPlan ?? "free"
+    const [created] = await db
+      .insert(tenants)
+      .values({
+        name: payload.name,
+        slug: payload.slug,
+        genderPolicy: payload.genderPolicy,
+        status: "active",
+        plan,
+      })
+      .returning()
+
+    if (!created) {
+      throw new BadRequestException("Failed to create tenant")
     }
-    this.tenants.push(next)
-    return next
+
+    return this.toTenantView(created)
   }
 
-  update(id: string, payload: UpdateTenantDto): TenantRecord {
-    const found = this.getById(id)
+  async update(id: string, payload: UpdateTenantDto): Promise<TenantView> {
+    await this.findTenantOrThrow(id)
+
+    if (payload.slug) {
+      await this.assertUniqueSlug(payload.slug, id)
+    }
+
+    const updatePayload: Partial<typeof tenants.$inferInsert> = {
+      updatedAt: new Date(),
+    }
     if (payload.name) {
-      found.name = payload.name
+      updatePayload.name = payload.name
     }
     if (payload.slug) {
-      this.assertUniqueSlug(payload.slug, id)
-      found.slug = payload.slug
+      updatePayload.slug = payload.slug
     }
     if (payload.genderPolicy) {
-      found.genderPolicy = payload.genderPolicy
+      updatePayload.genderPolicy = payload.genderPolicy
     }
     if (payload.status) {
-      found.status = payload.status
-      found.deactivatedAt = payload.status === "inactive" ? new Date() : null
+      updatePayload.status = payload.status
+      updatePayload.deletedAt = payload.status === "inactive" ? new Date() : null
     }
     if (payload.billingPlan) {
-      found.billingPlan = payload.billingPlan
+      updatePayload.plan = payload.billingPlan
     }
-    if (typeof payload.studentLimit === "number") {
-      found.studentLimit = payload.studentLimit
-    }
-    if (typeof payload.adminLimit === "number") {
-      found.adminLimit = payload.adminLimit
-    }
-    if (typeof payload.monthlyPrice === "number") {
-      found.monthlyPrice = payload.monthlyPrice
-    }
-    if (payload.currency) {
-      found.currency = payload.currency.toUpperCase()
-    }
-    found.updatedAt = new Date()
-    return found
-  }
 
-  delete(id: string): { success: true } {
-    const idx = this.tenants.findIndex((tenant) => tenant.id === id)
-    if (idx < 0) {
+    const [updated] = await db
+      .update(tenants)
+      .set(updatePayload)
+      .where(eq(tenants.id, id))
+      .returning()
+
+    if (!updated) {
       throw new NotFoundException("Tenant not found")
     }
-    this.tenants.splice(idx, 1)
+
+    return this.toTenantView(updated)
+  }
+
+  async delete(id: string): Promise<{ success: true }> {
+    await this.findTenantOrThrow(id)
+
+    await db
+      .update(tenants)
+      .set({
+        status: "inactive",
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, id))
+
     return { success: true }
   }
 
-  activate(id: string): TenantRecord {
-    const found = this.getById(id)
-    found.status = "active"
-    found.deactivatedAt = null
-    found.updatedAt = new Date()
-    return found
+  async activate(id: string): Promise<TenantView> {
+    await this.findTenantOrThrow(id)
+    const [updated] = await db
+      .update(tenants)
+      .set({
+        status: "active",
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, id))
+      .returning()
+
+    if (!updated) {
+      throw new NotFoundException("Tenant not found")
+    }
+    return this.toTenantView(updated)
   }
 
-  deactivate(id: string): TenantRecord {
-    const found = this.getById(id)
-    found.status = "inactive"
-    found.deactivatedAt = new Date()
-    found.updatedAt = new Date()
-    return found
+  async deactivate(id: string): Promise<TenantView> {
+    await this.findTenantOrThrow(id)
+    const [updated] = await db
+      .update(tenants)
+      .set({
+        status: "inactive",
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, id))
+      .returning()
+
+    if (!updated) {
+      throw new NotFoundException("Tenant not found")
+    }
+    return this.toTenantView(updated)
   }
 
-  getStats(id: string): {
+  async getStats(id: string): Promise<{
     tenantId: string
     status: TenantStatus
     studentsCount: number
@@ -213,22 +209,60 @@ export class TenantsService {
     studentCapacityUsagePercent: number
     monthlyRevenue: number
     totalRevenue: number
-  } {
-    const found = this.getById(id)
+  }> {
+    const row = await this.findTenantOrThrow(id)
+    const planDetails = this.planDetails(row.plan)
+
+    const studentCountRows = await db
+      .select({ studentsCount: sql<number>`count(*)::int` })
+      .from(students)
+      .where(and(eq(students.tenantId, id), isNull(students.deletedAt)))
+    const studentsCount = studentCountRows[0]?.studentsCount ?? 0
+
+    const teacherCountRows = await db
+      .select({ teachersCount: sql<number>`count(*)::int` })
+      .from(teachers)
+      .where(and(eq(teachers.tenantId, id), isNull(teachers.deletedAt)))
+    const teachersCount = teacherCountRows[0]?.teachersCount ?? 0
+
+    const monthlyRevenueRows = await db
+      .select({ monthlyRevenueRaw: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.tenantId, id),
+          eq(payments.status, "paid"),
+          isNull(payments.deletedAt),
+          sql`date_trunc('month', ${payments.date}) = date_trunc('month', CURRENT_DATE)`
+        )
+      )
+    const monthlyRevenueRaw = monthlyRevenueRows[0]?.monthlyRevenueRaw ?? "0"
+
+    const totalRevenueRows = await db
+      .select({ totalRevenueRaw: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+      .from(payments)
+      .where(
+        and(eq(payments.tenantId, id), eq(payments.status, "paid"), isNull(payments.deletedAt))
+      )
+    const totalRevenueRaw = totalRevenueRows[0]?.totalRevenueRaw ?? "0"
+
     const studentCapacityUsagePercent =
-      found.studentLimit > 0 ? Math.round((found.studentsCount / found.studentLimit) * 100) : 0
+      planDetails.studentLimit > 0
+        ? Math.round((studentsCount / planDetails.studentLimit) * 100)
+        : 0
+
     return {
-      tenantId: found.id,
-      status: found.status,
-      studentsCount: found.studentsCount,
-      teachersCount: found.teachersCount,
+      tenantId: row.id,
+      status: row.status,
+      studentsCount,
+      teachersCount,
       studentCapacityUsagePercent,
-      monthlyRevenue: found.monthlyPrice,
-      totalRevenue: found.revenueTotal,
+      monthlyRevenue: Number(monthlyRevenueRaw),
+      totalRevenue: Number(totalRevenueRaw),
     }
   }
 
-  getBilling(id: string): {
+  async getBilling(id: string): Promise<{
     tenantId: string
     billingPlan: BillingPlan
     monthlyPrice: number
@@ -236,23 +270,25 @@ export class TenantsService {
     studentLimit: number
     adminLimit: number
     status: TenantStatus
-  } {
-    const found = this.getById(id)
+  }> {
+    const row = await this.findTenantOrThrow(id)
+    const planDetails = this.planDetails(row.plan)
+
     return {
-      tenantId: found.id,
-      billingPlan: found.billingPlan,
-      monthlyPrice: found.monthlyPrice,
-      currency: found.currency,
-      studentLimit: found.studentLimit,
-      adminLimit: found.adminLimit,
-      status: found.status,
+      tenantId: row.id,
+      billingPlan: row.plan,
+      monthlyPrice: planDetails.monthlyPrice,
+      currency: planDetails.currency,
+      studentLimit: planDetails.studentLimit,
+      adminLimit: planDetails.adminLimit,
+      status: row.status,
     }
   }
 
-  updateBilling(
+  async updateBilling(
     id: string,
     payload: UpdateTenantBillingDto
-  ): {
+  ): Promise<{
     tenantId: string
     billingPlan: BillingPlan
     monthlyPrice: number
@@ -260,86 +296,117 @@ export class TenantsService {
     studentLimit: number
     adminLimit: number
     status: TenantStatus
-  } {
-    const found = this.getById(id)
+  }> {
+    await this.findTenantOrThrow(id)
+
+    if (
+      typeof payload.studentLimit === "number" ||
+      typeof payload.adminLimit === "number" ||
+      typeof payload.monthlyPrice === "number" ||
+      payload.currency
+    ) {
+      throw new BadRequestException(
+        "Custom limits/pricing is not persisted yet. Update billingPlan only."
+      )
+    }
 
     if (payload.billingPlan) {
-      found.billingPlan = payload.billingPlan
-    }
-    if (typeof payload.monthlyPrice === "number") {
-      found.monthlyPrice = payload.monthlyPrice
-    }
-    if (typeof payload.studentLimit === "number") {
-      if (payload.studentLimit < found.studentsCount) {
-        throw new BadRequestException("studentLimit cannot be below current students count")
-      }
-      found.studentLimit = payload.studentLimit
-    }
-    if (typeof payload.adminLimit === "number") {
-      found.adminLimit = payload.adminLimit
-    }
-    if (payload.currency) {
-      found.currency = payload.currency.toUpperCase()
+      await db
+        .update(tenants)
+        .set({
+          plan: payload.billingPlan,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, id))
     }
 
-    found.updatedAt = new Date()
     return this.getBilling(id)
   }
 
-  private assertUniqueSlug(slug: string, ignoreTenantId?: string): void {
-    const exists = this.tenants.some((tenant) => {
-      if (ignoreTenantId && tenant.id === ignoreTenantId) {
-        return false
-      }
-      return tenant.slug.toLowerCase() === slug.toLowerCase()
-    })
-    if (exists) {
+  private async findTenantOrThrow(id: string): Promise<typeof tenants.$inferSelect> {
+    const [row] = await db
+      .select()
+      .from(tenants)
+      .where(and(eq(tenants.id, id), isNull(tenants.deletedAt)))
+      .limit(1)
+
+    if (!row) {
+      throw new NotFoundException("Tenant not found")
+    }
+    return row
+  }
+
+  private async assertUniqueSlug(slug: string, ignoreTenantId?: string): Promise<void> {
+    const baseFilter: SQL[] = [eq(tenants.slug, slug), isNull(tenants.deletedAt)]
+    if (ignoreTenantId) {
+      baseFilter.push(ne(tenants.id, ignoreTenantId))
+    }
+
+    const [existing] = await db
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(and(...baseFilter))
+      .limit(1)
+
+    if (existing) {
       throw new BadRequestException("Tenant slug already exists")
     }
   }
 
-  private defaultStudentLimitByPlan(plan: BillingPlan): number {
-    switch (plan) {
-      case "free":
-        return 50
-      case "basic":
-        return 200
-      case "premium":
-        return 1000
-      case "enterprise":
-        return 10000
+  private resolveSortColumn(sort: string | undefined) {
+    switch (sort) {
+      case "name":
+        return tenants.name
+      case "slug":
+        return tenants.slug
+      case "status":
+        return tenants.status
+      case "plan":
+        return tenants.plan
+      case "updatedAt":
+        return tenants.updatedAt
+      case "createdAt":
       default:
-        return 50
+        return tenants.createdAt
     }
   }
 
-  private defaultAdminLimitByPlan(plan: BillingPlan): number {
+  private planDetails(plan: BillingPlan): {
+    studentLimit: number
+    adminLimit: number
+    monthlyPrice: number
+    currency: string
+  } {
     switch (plan) {
       case "free":
-        return 5
+        return { studentLimit: 50, adminLimit: 5, monthlyPrice: 0, currency: "USD" }
       case "basic":
-        return 20
-      case "premium":
-        return 200
+        return { studentLimit: 200, adminLimit: 20, monthlyPrice: 50, currency: "USD" }
+      case "pro":
+        return { studentLimit: 1000, adminLimit: 200, monthlyPrice: 150, currency: "USD" }
       case "enterprise":
-        return 1000
+        return { studentLimit: 10000, adminLimit: 1000, monthlyPrice: 400, currency: "USD" }
       default:
-        return 5
+        return { studentLimit: 50, adminLimit: 5, monthlyPrice: 0, currency: "USD" }
     }
   }
 
-  private defaultPriceByPlan(plan: BillingPlan): number {
-    switch (plan) {
-      case "free":
-        return 0
-      case "basic":
-        return 50
-      case "premium":
-        return 150
-      case "enterprise":
-        return 400
-      default:
-        return 0
+  private toTenantView(row: typeof tenants.$inferSelect): TenantView {
+    const planDetails = this.planDetails(row.plan as BillingPlan)
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      genderPolicy: row.genderPolicy,
+      status: row.status,
+      billingPlan: row.plan,
+      studentLimit: planDetails.studentLimit,
+      adminLimit: planDetails.adminLimit,
+      monthlyPrice: planDetails.monthlyPrice,
+      currency: planDetails.currency,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deactivatedAt: row.deletedAt,
     }
   }
 }

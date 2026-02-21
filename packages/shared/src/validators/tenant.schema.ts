@@ -1,8 +1,8 @@
 import { z } from "zod"
 
 const genderPolicySchema = z.enum(["boys_only", "girls_only", "mixed"])
-const tenantStatusSchema = z.enum(["active", "inactive"])
-const billingPlanSchema = z.enum(["free", "basic", "premium", "enterprise"])
+const tenantStatusSchema = z.enum(["active", "inactive", "suspended"])
+const billingPlanSchema = z.enum(["free", "basic", "pro", "enterprise"])
 
 export const createTenantSchema = z.object({
   name: z.string().min(2),

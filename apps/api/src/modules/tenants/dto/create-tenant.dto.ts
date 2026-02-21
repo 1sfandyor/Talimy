@@ -14,8 +14,8 @@ export class CreateTenantDto {
   genderPolicy!: "boys_only" | "girls_only" | "mixed"
 
   @IsOptional()
-  @IsIn(["free", "basic", "premium", "enterprise"])
-  billingPlan?: "free" | "basic" | "premium" | "enterprise"
+  @IsIn(["free", "basic", "pro", "enterprise"])
+  billingPlan?: "free" | "basic" | "pro" | "enterprise"
 
   @IsOptional()
   @Type(() => Number)

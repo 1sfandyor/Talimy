@@ -4,10 +4,10 @@ import { PaginationDto } from "@/common/dto/pagination.dto"
 
 export class ListTenantsQueryDto extends PaginationDto {
   @IsOptional()
-  @IsIn(["active", "inactive"])
-  status?: "active" | "inactive"
+  @IsIn(["active", "inactive", "suspended"])
+  status?: "active" | "inactive" | "suspended"
 
   @IsOptional()
-  @IsIn(["free", "basic", "premium", "enterprise"])
-  billingPlan?: "free" | "basic" | "premium" | "enterprise"
+  @IsIn(["free", "basic", "pro", "enterprise"])
+  billingPlan?: "free" | "basic" | "pro" | "enterprise"
 }
