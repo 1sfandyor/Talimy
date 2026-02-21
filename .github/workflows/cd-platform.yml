@@ -67,7 +67,9 @@ jobs:
   deploy-dokploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: ${{ secrets.DOKPLOY_PLATFORM_DEPLOY_HOOK != '' }}
+    env:
+      DOKPLOY_DEPLOY_HOOK: ${{ secrets.DOKPLOY_PLATFORM_DEPLOY_HOOK }}
+    if: ${{ env.DOKPLOY_DEPLOY_HOOK != '' }}
     steps:
       - name: Trigger Dokploy deploy hook
-        run: curl -fsSL -X POST "${{ secrets.DOKPLOY_PLATFORM_DEPLOY_HOOK }}"
+        run: curl -fsSL -X POST "$DOKPLOY_DEPLOY_HOOK"
