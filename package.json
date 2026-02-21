@@ -34,5 +34,8 @@
     "apps/*",
     "packages/*",
     "tooling/*"
-  ]
+  ],
+  "dependencies": {
+    "@sentry/nestjs": "^10.39.0"
+  }
 }
