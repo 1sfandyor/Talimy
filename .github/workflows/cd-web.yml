@@ -65,9 +65,13 @@ jobs:
   deploy-dokploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    env:
-      DOKPLOY_DEPLOY_HOOK: ${{ secrets.DOKPLOY_WEB_DEPLOY_HOOK }}
-    if: ${{ env.DOKPLOY_DEPLOY_HOOK != '' }}
     steps:
       - name: Trigger Dokploy deploy hook
-        run: curl -fsSL -X POST "$DOKPLOY_DEPLOY_HOOK"
+        env:
+          DOKPLOY_DEPLOY_HOOK: ${{ secrets.DOKPLOY_WEB_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DOKPLOY_DEPLOY_HOOK" ]; then
+            echo "DOKPLOY_WEB_DEPLOY_HOOK is not set. Skipping deploy trigger."
+            exit 0
+          fi
+          curl -fsSL -X POST "$DOKPLOY_DEPLOY_HOOK"
