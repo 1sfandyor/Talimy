@@ -121,6 +121,46 @@ export class UsersRepository {
     return { success: true }
   }
 
+  async changeRole(
+    tenantId: string,
+    id: string,
+    role: "platform_admin" | "school_admin" | "teacher" | "student" | "parent"
+  ): Promise<UserView> {
+    await this.findUserOrThrow(tenantId, id)
+    const [updated] = await db
+      .update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId), isNull(users.deletedAt)))
+      .returning()
+    if (!updated) throw new NotFoundException("User not found")
+    return toUserView(updated)
+  }
+
+  async changePassword(
+    tenantId: string,
+    id: string,
+    newPassword: string
+  ): Promise<{ success: true }> {
+    await this.findUserOrThrow(tenantId, id)
+    const passwordHash = bcrypt.hashSync(newPassword, UsersRepository.BCRYPT_ROUNDS)
+    await db
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId), isNull(users.deletedAt)))
+    return { success: true }
+  }
+
+  async updateAvatar(tenantId: string, id: string, avatar: string): Promise<UserView> {
+    await this.findUserOrThrow(tenantId, id)
+    const [updated] = await db
+      .update(users)
+      .set({ avatar, updatedAt: new Date() })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId), isNull(users.deletedAt)))
+      .returning()
+    if (!updated) throw new NotFoundException("User not found")
+    return toUserView(updated)
+  }
+
   private async findUserOrThrow(
     tenantId: string,
     userId: string

@@ -1,15 +1,29 @@
 import { Injectable } from "@nestjs/common"
 
+import { AttendanceQueueService } from "./attendance-queue.service"
 import { AttendanceRepository } from "./attendance.repository"
 import { AttendanceQueryDto } from "./dto/attendance-query.dto"
 import { MarkAttendanceDto } from "./dto/mark-attendance.dto"
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly repository: AttendanceRepository) {}
+  constructor(
+    private readonly repository: AttendanceRepository,
+    private readonly queueService: AttendanceQueueService
+  ) {}
 
-  mark(payload: MarkAttendanceDto) {
-    return this.repository.mark(payload)
+  async mark(payload: MarkAttendanceDto) {
+    const result = await this.repository.mark(payload)
+    const absentStudentIds = payload.records
+      .filter((record) => record.status === "absent")
+      .map((record) => record.studentId)
+    await this.queueService.enqueueAbsentAlerts({
+      tenantId: payload.tenantId,
+      classId: payload.classId,
+      date: payload.date,
+      studentIds: absentStudentIds,
+    })
+    return result
   }
 
   getByClass(tenantId: string, classId: string, query: AttendanceQueryDto) {

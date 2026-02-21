@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -18,7 +19,12 @@ import {
 } from "@talimy/shared"
 
 import { Roles } from "@/common/decorators/roles.decorator"
+import {
+  CurrentUser,
+  type CurrentUser as CurrentUserType,
+} from "@/common/decorators/current-user.decorator"
 import { AuthGuard } from "@/common/guards/auth.guard"
+import { GenderGuard } from "@/common/guards/gender.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
 import { TenantGuard } from "@/common/guards/tenant.guard"
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
@@ -29,14 +35,17 @@ import { UpdateTeacherDto } from "./dto/update-teacher.dto"
 import { TeachersService } from "./teachers.service"
 
 @Controller("teachers")
-@UseGuards(AuthGuard, RolesGuard, TenantGuard)
+@UseGuards(AuthGuard, RolesGuard, TenantGuard, GenderGuard)
 @Roles("platform_admin", "school_admin")
 export class TeachersController {
   constructor(private readonly teachersService: TeachersService) {}
 
   @Get()
   @UsePipes(new ZodValidationPipe(listTeachersQuerySchema))
-  list(@Query() query: ListTeachersQueryDto) {
+  list(@CurrentUser() currentUser: CurrentUserType | null, @Query() query: ListTeachersQueryDto) {
+    if (currentUser?.genderScope && currentUser.genderScope !== "all") {
+      query.gender = currentUser.genderScope
+    }
     return this.teachersService.list(query)
   }
 
@@ -66,17 +75,28 @@ export class TeachersController {
 
   @Post()
   @UsePipes(new ZodValidationPipe(createTeacherSchema))
-  create(@Body() payload: CreateTeacherDto) {
+  create(@CurrentUser() currentUser: CurrentUserType | null, @Body() payload: CreateTeacherDto) {
+    if (currentUser?.genderScope && currentUser.genderScope !== "all") {
+      if (payload.gender !== currentUser.genderScope) {
+        throw new ForbiddenException("Gender scope mismatch")
+      }
+    }
     return this.teachersService.create(payload)
   }
 
   @Patch(":id")
   @UsePipes(new ZodValidationPipe(updateTeacherSchema))
   update(
+    @CurrentUser() currentUser: CurrentUserType | null,
     @Query("tenantId") tenantId: string,
     @Param("id") id: string,
     @Body() payload: UpdateTeacherDto
   ) {
+    if (currentUser?.genderScope && currentUser.genderScope !== "all" && payload.gender) {
+      if (payload.gender !== currentUser.genderScope) {
+        throw new ForbiddenException("Gender scope mismatch")
+      }
+    }
     return this.teachersService.update(tenantId, id, payload)
   }
 

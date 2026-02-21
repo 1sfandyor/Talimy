@@ -11,8 +11,11 @@ import {
   UsePipes,
 } from "@nestjs/common"
 import {
+  changeUserPasswordSchema,
   createUserSchema,
   listUsersQuerySchema,
+  updateUserAvatarSchema,
+  updateUserRoleSchema,
   updateUserSchema,
   userTenantQuerySchema,
 } from "@talimy/shared"
@@ -25,6 +28,9 @@ import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
 
 import { CreateUserDto } from "./dto/create-user.dto"
 import { ListUsersQueryDto } from "./dto/list-users-query.dto"
+import { ChangeUserPasswordDto } from "./dto/change-user-password.dto"
+import { UpdateUserAvatarDto } from "./dto/update-user-avatar.dto"
+import { UpdateUserRoleDto } from "./dto/update-user-role.dto"
 import { UpdateUserDto } from "./dto/update-user.dto"
 import { UsersService } from "./users.service"
 
@@ -60,6 +66,36 @@ export class UsersController {
     @Body() payload: UpdateUserDto
   ) {
     return this.usersService.update(tenantId, id, payload)
+  }
+
+  @Patch(":id/role")
+  @UsePipes(new ZodValidationPipe(updateUserRoleSchema))
+  changeRole(
+    @Query("tenantId") tenantId: string,
+    @Param("id") id: string,
+    @Body() payload: UpdateUserRoleDto
+  ) {
+    return this.usersService.changeRole(tenantId, id, payload)
+  }
+
+  @Patch(":id/password")
+  @UsePipes(new ZodValidationPipe(changeUserPasswordSchema))
+  changePassword(
+    @Query("tenantId") tenantId: string,
+    @Param("id") id: string,
+    @Body() payload: ChangeUserPasswordDto
+  ) {
+    return this.usersService.changePassword(tenantId, id, payload)
+  }
+
+  @Patch(":id/avatar")
+  @UsePipes(new ZodValidationPipe(updateUserAvatarSchema))
+  updateAvatar(
+    @Query("tenantId") tenantId: string,
+    @Param("id") id: string,
+    @Body() payload: UpdateUserAvatarDto
+  ) {
+    return this.usersService.updateAvatar(tenantId, id, payload)
   }
 
   @Delete(":id")

@@ -34,6 +34,24 @@ export const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
+export const updateUserRoleSchema = z.object({
+  tenantId: z.string().uuid(),
+  role: userRoleSchema,
+})
+
+export const changeUserPasswordSchema = z.object({
+  tenantId: z.string().uuid(),
+  newPassword: z.string().min(8),
+})
+
+export const updateUserAvatarSchema = z.object({
+  tenantId: z.string().uuid(),
+  avatar: z.string().url().max(500),
+})
+
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
 export type ListUsersQueryInput = z.infer<typeof listUsersQuerySchema>
+export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>
+export type ChangeUserPasswordInput = z.infer<typeof changeUserPasswordSchema>
+export type UpdateUserAvatarInput = z.infer<typeof updateUserAvatarSchema>
