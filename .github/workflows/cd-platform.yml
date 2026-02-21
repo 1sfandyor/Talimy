@@ -78,7 +78,7 @@ jobs:
           echo "ENTRYPOINT: $ENTRYPOINT"
           echo "WORKDIR: $WORKDIR"
 
-          if [[ "$CMD" != *"apps/web"* || "$CMD" != *"start"* ]]; then
+          if [[ "$CMD" != *"run --cwd apps/web start"* ]]; then
             echo "Unexpected image CMD: '$CMD'"
             exit 1
           fi

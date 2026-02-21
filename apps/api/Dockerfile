@@ -10,7 +10,7 @@ RUN bun install --frozen-lockfile
 
 FROM base AS build
 ENV NODE_ENV=production
-RUN bun --cwd apps/api run build && (test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main)
+RUN bun run --cwd apps/api build && (test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main)
 
 FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
@@ -26,4 +26,4 @@ COPY --from=build /app/packages ./packages
 
 EXPOSE 4000
 
-CMD ["bun", "--cwd", "apps/api", "run", "start:prod"]
+CMD ["bun", "run", "--cwd", "apps/api", "start:prod"]
