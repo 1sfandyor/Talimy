@@ -6,9 +6,4 @@ export class AppController {
   getHealth(): { success: boolean } {
     return { success: true }
   }
-
-  @Get("debug-sentry")
-  getError(): never {
-    throw new Error("My first Sentry error!")
-  }
 }
