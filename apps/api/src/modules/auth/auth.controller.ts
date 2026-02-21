@@ -1,4 +1,7 @@
-import { Body, Controller, HttpCode, Post } from "@nestjs/common"
+import { Body, Controller, HttpCode, Post, UsePipes } from "@nestjs/common"
+import { loginSchema, logoutSchema, refreshTokenSchema, registerSchema } from "@talimy/shared"
+
+import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
 
 import { AuthService } from "./auth.service"
 import { LoginDto } from "./dto/login.dto"
@@ -12,23 +15,27 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(loginSchema))
   login(@Body() payload: LoginDto) {
     return this.authService.login(payload)
   }
 
   @Post("register")
+  @UsePipes(new ZodValidationPipe(registerSchema))
   register(@Body() payload: RegisterDto) {
     return this.authService.register(payload)
   }
 
   @Post("refresh")
   @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(refreshTokenSchema))
   refresh(@Body() payload: RefreshTokenDto) {
     return this.authService.refresh(payload)
   }
 
   @Post("logout")
   @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(logoutSchema))
   logout(@Body() payload?: LogoutDto) {
     return this.authService.logout(payload)
   }

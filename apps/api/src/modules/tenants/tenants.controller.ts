@@ -1,8 +1,26 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+  UsePipes,
+} from "@nestjs/common"
+import {
+  createTenantSchema,
+  listTenantsQuerySchema,
+  updateTenantBillingSchema,
+  updateTenantSchema,
+} from "@talimy/shared"
 
 import { Roles } from "@/common/decorators/roles.decorator"
 import { AuthGuard } from "@/common/guards/auth.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
+import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
 
 import { CreateTenantDto } from "./dto/create-tenant.dto"
 import { ListTenantsQueryDto } from "./dto/list-tenants-query.dto"
@@ -17,6 +35,7 @@ export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
   @Get()
+  @UsePipes(new ZodValidationPipe(listTenantsQuerySchema))
   list(@Query() query: ListTenantsQueryDto) {
     return this.tenantsService.list(query)
   }
@@ -27,11 +46,13 @@ export class TenantsController {
   }
 
   @Post()
+  @UsePipes(new ZodValidationPipe(createTenantSchema))
   create(@Body() payload: CreateTenantDto) {
     return this.tenantsService.create(payload)
   }
 
   @Patch(":id")
+  @UsePipes(new ZodValidationPipe(updateTenantSchema))
   update(@Param("id") id: string, @Body() payload: UpdateTenantDto) {
     return this.tenantsService.update(id, payload)
   }
@@ -57,6 +78,7 @@ export class TenantsController {
   }
 
   @Patch(":id/billing")
+  @UsePipes(new ZodValidationPipe(updateTenantBillingSchema))
   updateBilling(@Param("id") id: string, @Body() payload: UpdateTenantBillingDto) {
     return this.tenantsService.updateBilling(id, payload)
   }

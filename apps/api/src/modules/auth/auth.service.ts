@@ -1,4 +1,6 @@
-import { createHmac, pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto"
+
+import bcrypt from "bcrypt"
 
 import { Injectable, UnauthorizedException } from "@nestjs/common"
 
@@ -37,40 +39,38 @@ type StoredUser = {
   genderScope: "male" | "female" | "all"
 }
 
+type AuthIdentity = Omit<TokenPayload, "iat" | "exp" | "jti" | "type">
+
 @Injectable()
 export class AuthService {
+  private static readonly BCRYPT_ROUNDS = 12
   private readonly cfg = getAuthConfig()
   private readonly usersByEmail = new Map<string, StoredUser>()
   private readonly revokedRefreshTokenJti = new Set<string>()
 
   login(payload: LoginDto): AuthSession {
-    const user = this.usersByEmail.get(payload.email.toLowerCase())
-    if (!user) {
-      throw new UnauthorizedException("Invalid credentials")
-    }
-
-    const validPassword = this.verifyPassword(payload.password, user.passwordHash)
-    if (!validPassword) {
+    const identity = this.validateUserCredentials(payload.email, payload.password)
+    if (!identity) {
       throw new UnauthorizedException("Invalid credentials")
     }
 
     const accessToken = this.signToken(
       {
-        sub: user.id,
-        email: user.email,
-        tenantId: user.tenantId,
-        roles: user.roles,
-        genderScope: user.genderScope,
+        sub: identity.sub,
+        email: identity.email,
+        tenantId: identity.tenantId,
+        roles: identity.roles,
+        genderScope: identity.genderScope,
       },
       "access"
     )
     const refreshToken = this.signToken(
       {
-        sub: user.id,
-        email: user.email,
-        tenantId: user.tenantId,
-        roles: user.roles,
-        genderScope: user.genderScope,
+        sub: identity.sub,
+        email: identity.email,
+        tenantId: identity.tenantId,
+        roles: identity.roles,
+        genderScope: identity.genderScope,
       },
       "refresh"
     )
@@ -175,7 +175,7 @@ export class AuthService {
     return { success: true }
   }
 
-  verifyAccessToken(token: string): Omit<TokenPayload, "iat" | "exp" | "jti" | "type"> {
+  verifyAccessToken(token: string): AuthIdentity {
     const payload = this.verifyToken(token, "access")
     return {
       sub: payload.sub,
@@ -183,6 +183,35 @@ export class AuthService {
       tenantId: payload.tenantId,
       roles: payload.roles,
       genderScope: payload.genderScope,
+    }
+  }
+
+  verifyRefreshToken(token: string): AuthIdentity {
+    const payload = this.verifyToken(token, "refresh")
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      tenantId: payload.tenantId,
+      roles: payload.roles,
+      genderScope: payload.genderScope,
+    }
+  }
+
+  validateUserCredentials(email: string, password: string): AuthIdentity | null {
+    const user = this.usersByEmail.get(email.toLowerCase())
+    if (!user) {
+      return null
+    }
+    const validPassword = this.verifyPassword(password, user.passwordHash)
+    if (!validPassword) {
+      return null
+    }
+    return {
+      sub: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+      roles: user.roles,
+      genderScope: user.genderScope,
     }
   }
 
@@ -254,18 +283,11 @@ export class AuthService {
   }
 
   private hashPassword(password: string): string {
-    const salt = randomBytes(16).toString("hex")
-    const hash = pbkdf2Sync(password, salt, 310_000, 32, "sha256").toString("hex")
-    return `${salt}:${hash}`
+    return bcrypt.hashSync(password, AuthService.BCRYPT_ROUNDS)
   }
 
   private verifyPassword(password: string, stored: string): boolean {
-    const [salt, hash] = stored.split(":")
-    if (!salt || !hash) {
-      return false
-    }
-    const candidate = pbkdf2Sync(password, salt, 310_000, 32, "sha256").toString("hex")
-    return this.safeCompare(hash, candidate)
+    return bcrypt.compareSync(password, stored)
   }
 
   private safeCompare(a: string, b: string): boolean {

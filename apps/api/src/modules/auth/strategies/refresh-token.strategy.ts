@@ -4,34 +4,41 @@ import { ExtractJwt, Strategy } from "passport-jwt"
 
 import { getAuthConfig } from "@/config/auth.config"
 
-type JwtPayload = {
+type RefreshPayload = {
   sub?: string
   email?: string
   tenantId?: string
   roles?: string[]
   genderScope?: "male" | "female" | "all"
+  type?: "access" | "refresh"
 }
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
+export class RefreshTokenStrategy extends PassportStrategy(Strategy, "jwt-refresh") {
   constructor() {
     const authConfig = getAuthConfig()
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromBodyField("refreshToken"),
       ignoreExpiration: false,
-      secretOrKey: authConfig.jwtAccessSecret,
+      secretOrKey: authConfig.jwtRefreshSecret,
     })
   }
 
-  validate(payload: JwtPayload): {
+  validate(payload: RefreshPayload): {
     id: string
     email: string
     tenantId: string
     roles: string[]
     genderScope: "male" | "female" | "all"
   } {
-    if (!payload.sub || !payload.email || !payload.tenantId || !payload.genderScope) {
-      throw new UnauthorizedException("Invalid JWT payload")
+    if (
+      payload.type !== "refresh" ||
+      !payload.sub ||
+      !payload.email ||
+      !payload.tenantId ||
+      !payload.genderScope
+    ) {
+      throw new UnauthorizedException("Invalid refresh token payload")
     }
 
     return {
