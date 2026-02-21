@@ -1,10 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common"
+
+import { Roles } from "@/common/decorators/roles.decorator"
+import { AuthGuard } from "@/common/guards/auth.guard"
+import { RolesGuard } from "@/common/guards/roles.guard"
 
 import { CreateTenantDto } from "./dto/create-tenant.dto"
 import { UpdateTenantDto } from "./dto/update-tenant.dto"
 import { TenantsService } from "./tenants.service"
 
 @Controller("tenants")
+@UseGuards(AuthGuard, RolesGuard)
+@Roles("platform_admin")
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
