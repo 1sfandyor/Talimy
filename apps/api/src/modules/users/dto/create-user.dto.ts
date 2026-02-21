@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsUUID, MinLength } from "class-validator"
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator"
 
 export class CreateUserDto {
   @IsUUID()
@@ -11,7 +11,15 @@ export class CreateUserDto {
   @IsEmail()
   email!: string
 
-  @IsOptional()
   @IsString()
-  role?: string
+  @MinLength(8)
+  password!: string
+
+  @IsOptional()
+  @IsIn(["platform_admin", "school_admin", "teacher", "student", "parent"])
+  role?: "platform_admin" | "school_admin" | "teacher" | "student" | "parent"
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean
 }
