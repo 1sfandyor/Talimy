@@ -5,10 +5,14 @@ import {
   UnauthorizedException,
 } from "@nestjs/common"
 
+import { AuthService } from "@/modules/auth/auth.service"
+
 import type { CurrentUser } from "../decorators/current-user.decorator"
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+  constructor(private readonly authService: AuthService) {}
+
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<{
       headers: Record<string, string | string[] | undefined>
@@ -16,9 +20,23 @@ export class AuthGuard implements CanActivate {
       tenantId?: string
     }>()
 
+    const authorization = this.readHeader(req.headers, "authorization")
+    if (authorization?.startsWith("Bearer ")) {
+      const token = authorization.slice("Bearer ".length).trim()
+      const payload = this.authService.verifyAccessToken(token)
+      req.user = {
+        id: payload.sub,
+        tenantId: payload.tenantId,
+        roles: payload.roles,
+        genderScope: payload.genderScope,
+      }
+      req.tenantId = payload.tenantId
+      return true
+    }
+
     const userId = this.readHeader(req.headers, "x-user-id")
     if (!userId) {
-      throw new UnauthorizedException("Missing authentication header x-user-id")
+      throw new UnauthorizedException("Missing authentication header")
     }
 
     const tenantId = this.readHeader(req.headers, "x-tenant-id") ?? req.tenantId

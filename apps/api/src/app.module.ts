@@ -3,6 +3,10 @@ import { APP_FILTER } from "@nestjs/core"
 import { SentryGlobalFilter, SentryModule } from "@sentry/nestjs/setup"
 
 import { AppController } from "./app.controller"
+import { AuthGuard } from "./common/guards/auth.guard"
+import { GenderGuard } from "./common/guards/gender.guard"
+import { RolesGuard } from "./common/guards/roles.guard"
+import { TenantGuard } from "./common/guards/tenant.guard"
 import { LoggerMiddleware } from "./common/middleware/logger.middleware"
 import { TenantMiddleware } from "./common/middleware/tenant.middleware"
 import { AuthModule } from "./modules/auth/auth.module"
@@ -22,6 +26,10 @@ import { UsersModule } from "./modules/users/users.module"
   ],
   controllers: [AppController],
   providers: [
+    AuthGuard,
+    RolesGuard,
+    TenantGuard,
+    GenderGuard,
     {
       provide: APP_FILTER,
       useClass: SentryGlobalFilter,

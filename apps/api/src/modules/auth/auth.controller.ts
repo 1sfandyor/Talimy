@@ -2,6 +2,7 @@ import { Body, Controller, HttpCode, Post } from "@nestjs/common"
 
 import { AuthService } from "./auth.service"
 import { LoginDto } from "./dto/login.dto"
+import { LogoutDto } from "./dto/logout.dto"
 import { RefreshTokenDto } from "./dto/refresh-token.dto"
 import { RegisterDto } from "./dto/register.dto"
 
@@ -28,7 +29,7 @@ export class AuthController {
 
   @Post("logout")
   @HttpCode(200)
-  logout() {
-    return this.authService.logout()
+  logout(@Body() payload?: LogoutDto) {
+    return this.authService.logout(payload)
   }
 }

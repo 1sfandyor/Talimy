@@ -16,35 +16,44 @@
 ## Auth smoke commands
 
 ```bash
+curl -i -X POST http://127.0.0.1:4000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d "{\"fullName\":\"School Admin\",\"email\":\"admin@talimy.space\",\"password\":\"password123\",\"tenantId\":\"talimy-school\"}"
+
 curl -i -X POST https://api.talimy.space/api/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"admin@talimy.space\",\"password\":\"password123\"}"
 
 curl -i -X POST https://api.talimy.space/api/auth/refresh \
   -H "Content-Type: application/json" \
-  -d "{\"refreshToken\":\"refresh_admin@talimy.space\"}"
+  -d "{\"refreshToken\":\"<REFRESH_TOKEN_FROM_LOGIN>\"}"
 
-curl -i -X POST https://api.talimy.space/api/auth/logout
+curl -i -X POST https://api.talimy.space/api/auth/logout \
+  -H "Content-Type: application/json" \
+  -d "{\"refreshToken\":\"<REFRESH_TOKEN_FROM_LOGIN_OR_REFRESH>\"}"
 ```
 
 ## Guard smoke commands
 
 ```bash
-# Should fail without x-user-id
-curl -i "https://api.talimy.space/api/users?tenantId=talimy-school"
+# Should fail without token
+curl -i "http://127.0.0.1:4000/api/users?tenantId=talimy-school"
 
-# Should pass with auth headers
-curl -i "https://api.talimy.space/api/users?tenantId=talimy-school" \
+# Should pass with Bearer token
+curl -i "http://127.0.0.1:4000/api/users?tenantId=talimy-school" \
+  -H "Authorization: Bearer <ACCESS_TOKEN_FROM_LOGIN>"
+
+# Should fail on tenant mismatch
+curl -i -X POST "http://127.0.0.1:4000/api/students" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ACCESS_TOKEN_FOR_TENANT_A>" \
+  -d "{\"tenantId\":\"tenant-b\",\"fullName\":\"Ali Valiyev\",\"studentCode\":\"S-100\",\"gender\":\"male\"}"
+
+# Legacy fallback (temporary): should pass with x-user-id headers
+curl -i "http://127.0.0.1:4000/api/users?tenantId=talimy-school" \
   -H "x-user-id: user_1" \
   -H "x-tenant-id: talimy-school" \
   -H "x-user-roles: school_admin"
-
-# Should fail on tenant mismatch
-curl -i -X POST "https://api.talimy.space/api/students" \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: user_1" \
-  -H "x-tenant-id: tenant-a" \
-  -d "{\"tenantId\":\"tenant-b\",\"fullName\":\"Ali Valiyev\",\"studentCode\":\"S-100\",\"gender\":\"male\"}"
 ```
 
 ## Security acceptance
