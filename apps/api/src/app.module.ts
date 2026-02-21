@@ -1,8 +1,10 @@
-import { Module } from "@nestjs/common"
+import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common"
 import { APP_FILTER } from "@nestjs/core"
 import { SentryGlobalFilter, SentryModule } from "@sentry/nestjs/setup"
 
 import { AppController } from "./app.controller"
+import { LoggerMiddleware } from "./common/middleware/logger.middleware"
+import { TenantMiddleware } from "./common/middleware/tenant.middleware"
 import { AuthModule } from "./modules/auth/auth.module"
 import { StudentsModule } from "./modules/students/students.module"
 import { TeachersModule } from "./modules/teachers/teachers.module"
@@ -26,4 +28,8 @@ import { UsersModule } from "./modules/users/users.module"
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(LoggerMiddleware, TenantMiddleware).forRoutes("*")
+  }
+}
