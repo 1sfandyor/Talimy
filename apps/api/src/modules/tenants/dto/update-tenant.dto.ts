@@ -1,4 +1,5 @@
-import { IsIn, IsOptional, IsString, MinLength } from "class-validator"
+import { Type } from "class-transformer"
+import { IsIn, IsNumber, IsOptional, IsString, Max, Min, MinLength } from "class-validator"
 
 export class UpdateTenantDto {
   @IsOptional()
@@ -7,6 +8,44 @@ export class UpdateTenantDto {
   name?: string
 
   @IsOptional()
+  @IsString()
+  @MinLength(2)
+  slug?: string
+
+  @IsOptional()
   @IsIn(["boys_only", "girls_only", "mixed"])
   genderPolicy?: "boys_only" | "girls_only" | "mixed"
+
+  @IsOptional()
+  @IsIn(["active", "inactive"])
+  status?: "active" | "inactive"
+
+  @IsOptional()
+  @IsIn(["free", "basic", "premium", "enterprise"])
+  billingPlan?: "free" | "basic" | "premium" | "enterprise"
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100000)
+  studentLimit?: number
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(10000)
+  adminLimit?: number
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  monthlyPrice?: number
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  currency?: string
 }

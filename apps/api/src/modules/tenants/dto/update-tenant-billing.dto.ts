@@ -1,18 +1,7 @@
 import { Type } from "class-transformer"
 import { IsIn, IsNumber, IsOptional, IsString, Max, Min, MinLength } from "class-validator"
 
-export class CreateTenantDto {
-  @IsString()
-  @MinLength(2)
-  name!: string
-
-  @IsString()
-  @MinLength(2)
-  slug!: string
-
-  @IsIn(["boys_only", "girls_only", "mixed"])
-  genderPolicy!: "boys_only" | "girls_only" | "mixed"
-
+export class UpdateTenantBillingDto {
   @IsOptional()
   @IsIn(["free", "basic", "premium", "enterprise"])
   billingPlan?: "free" | "basic" | "premium" | "enterprise"
