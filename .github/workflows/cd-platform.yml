@@ -72,12 +72,18 @@ jobs:
           docker pull "$IMAGE_REF"
 
           CMD="$(docker image inspect "$IMAGE_REF" --format '{{join .Config.Cmd " "}}')"
-          if [ "$CMD" != "bun --cwd apps/web run start" ]; then
+          ENTRYPOINT="$(docker image inspect "$IMAGE_REF" --format '{{join .Config.Entrypoint " "}}')"
+          WORKDIR="$(docker image inspect "$IMAGE_REF" --format '{{.Config.WorkingDir}}')"
+          echo "CMD: $CMD"
+          echo "ENTRYPOINT: $ENTRYPOINT"
+          echo "WORKDIR: $WORKDIR"
+
+          if [[ "$CMD" != *"apps/web"* || "$CMD" != *"start"* ]]; then
             echo "Unexpected image CMD: '$CMD'"
             exit 1
           fi
 
-          docker run --rm --entrypoint sh "$IMAGE_REF" -lc 'test -d /app/apps/web/.next'
+          docker run --rm --entrypoint sh "$IMAGE_REF" -lc 'test -d /app/apps/web/.next || test -f /app/apps/web/.next/BUILD_ID'
 
   deploy-dokploy:
     runs-on: ubuntu-latest

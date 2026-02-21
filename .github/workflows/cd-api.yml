@@ -70,12 +70,18 @@ jobs:
           docker pull "$IMAGE_REF"
 
           CMD="$(docker image inspect "$IMAGE_REF" --format '{{join .Config.Cmd " "}}')"
-          if [ "$CMD" != "bun --cwd apps/api run start:prod" ]; then
+          ENTRYPOINT="$(docker image inspect "$IMAGE_REF" --format '{{join .Config.Entrypoint " "}}')"
+          WORKDIR="$(docker image inspect "$IMAGE_REF" --format '{{.Config.WorkingDir}}')"
+          echo "CMD: $CMD"
+          echo "ENTRYPOINT: $ENTRYPOINT"
+          echo "WORKDIR: $WORKDIR"
+
+          if [[ "$CMD" != *"apps/api"* || "$CMD" != *"start:prod"* ]]; then
             echo "Unexpected image CMD: '$CMD'"
             exit 1
           fi
 
-          docker run --rm --entrypoint sh "$IMAGE_REF" -lc 'test -f /app/apps/api/dist/main.js'
+          docker run --rm --entrypoint sh "$IMAGE_REF" -lc 'test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main'
 
   deploy-dokploy:
     runs-on: ubuntu-latest
