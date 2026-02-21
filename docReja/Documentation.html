@@ -187,6 +187,36 @@ style='page-break-before:always'>
 
 <p class=MsoNormal style='margin-bottom:6.0pt'>&nbsp;</p>
 
+<div style='border:none;border-bottom:solid #2E74B5 1.0pt;padding:0in 0in 2.0pt 0in'>
+
+<p class=MsoNormal style='margin-top:15.0pt;margin-right:0in;margin-bottom:
+6.0pt;margin-left:0in;border:none;padding:0in'><b><span style='font-size:12.0pt;
+color:#2E74B5'>Deployment Stability Notes (2026-02-21)</span></b></p>
+
+</div>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>GHCR image verify uchun repository nomi lowercase bo'lishi shart; sha tag short format (`sha-xxxxxxx`) bilan ishlatiladi.</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>Web/API Docker runtime command standart: `bun run --cwd apps/web start`, `bun run --cwd apps/api start:prod`.</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>Build artifact check majburiy: web `.next/BUILD_ID`, api `dist/main(.js)`; Dokploy `Run Command` noto'g'ri override qilinmasin (image CMD ishlasin).</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>API ValidationPipe ishlatilganda `class-validator` va `class-transformer` dependencies ichida bo'lishi kerak.</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>Sentry test endpoint vaqtinchalik: event tekshiruvdan so'ng production'dan olib tashlanadi.</span></p>
+
+<p class=MsoNormal style='margin-bottom:6.0pt'>&nbsp;</p>
+
 <div style='border:none;border-bottom:solid #1B8A4C 1.0pt;padding:0in 0in 2.0pt 0in'>
 
 <p class=MsoNormal style='margin-top:15.0pt;margin-right:0in;margin-bottom:

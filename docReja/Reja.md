@@ -1,6 +1,6 @@
 ﻿# TALIMY - Execution Plan v3 (0 -> 100%, Full Detail)
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Source baseline: `reja.txt` (all subtasks preserved)
 Status: In execution (track by phase/task status markers below)
 
@@ -1948,6 +1948,25 @@ Status: In execution (track by phase/task status markers below)
     `proxy.ts` subdomain routing, login redirect, API connectivity, Supabase/Redis ulanish loglari.
 17. Rollback qoidasini yozing:
     Dokploy previous successful release ga qaytish + DNS/cert holatini qayta tekshirish.
+
+#### Task 17.2.1 Production Stability Guardrails (2026-02-21 lessons)
+
+1. GHCR image reference har doim lowercase bo'lsin (`${IMAGE_REF,,}`), aks holda `invalid reference format` xatosi chiqadi.
+2. `type=sha,prefix=sha-` ishlatilganda verify/pull uchun short SHA (`${GITHUB_SHA::7}`) bilan tag ishlating.
+3. Dockerfile runtime command va workflow verify check bir xil sintaksisda bo'lsin:
+   - Web: `bun run --cwd apps/web start`
+   - API: `bun run --cwd apps/api start:prod`
+4. Build stage artifact check majburiy:
+   - Web: `.next/BUILD_ID`
+   - API: `dist/main(.js)`
+5. Dokploy service'da image `CMD` to'g'ri bo'lsa `Run Command` bo'sh qoldiriladi; noto'g'ri override (`bun run`) restart loop beradi.
+6. API global `ValidationPipe` ishlatilsa `class-validator` va `class-transformer` runtime dependencies bo'lishi shart.
+7. Sentry test endpoint (`/api/debug-sentry`) faqat verification uchun; event tushganidan keyin production'dan olib tashlanadi.
+8. Post-deploy smoke-check minimal ro'yxati:
+   - `https://talimy.space`
+   - `https://platform.talimy.space`
+   - `https://api.talimy.space/api/health`
+9. Domain UX guardrail: `platform.talimy.space` va `talimy.space` landing matni ajralib turishi kerak.
 
 - **Task Exit Criteria**: all subtasks done + Global DoD satisfied.
 
