@@ -65,10 +65,10 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Verify pushed Platform image
-        env:
-          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
         run: |
           set -euo pipefail
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::7}"
+          IMAGE_REF="${IMAGE_REF,,}"
           docker pull "$IMAGE_REF"
 
           CMD="$(docker image inspect "$IMAGE_REF" --format '{{join .Config.Cmd " "}}')"
