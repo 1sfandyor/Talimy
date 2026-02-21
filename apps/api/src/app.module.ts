@@ -10,6 +10,7 @@ import { TenantGuard } from "./common/guards/tenant.guard"
 import { LoggerMiddleware } from "./common/middleware/logger.middleware"
 import { TenantMiddleware } from "./common/middleware/tenant.middleware"
 import { AuthModule } from "./modules/auth/auth.module"
+import { ClassesModule } from "./modules/classes/classes.module"
 import { ParentsModule } from "./modules/parents/parents.module"
 import { StudentsModule } from "./modules/students/students.module"
 import { TeachersModule } from "./modules/teachers/teachers.module"
@@ -25,6 +26,7 @@ import { UsersModule } from "./modules/users/users.module"
     TeachersModule,
     StudentsModule,
     ParentsModule,
+    ClassesModule,
   ],
   controllers: [AppController],
   providers: [
