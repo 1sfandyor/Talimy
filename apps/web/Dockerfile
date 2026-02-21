@@ -9,20 +9,21 @@ COPY tooling ./tooling
 RUN bun install --frozen-lockfile
 
 FROM base AS build
+ARG APP_TARGET=web
 ENV NODE_ENV=production
-RUN bun --cwd apps/api run build
+RUN bun --cwd apps/web run build
 
 FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=4000
+ENV PORT=3000
 
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api ./apps/api
+COPY --from=build /app/apps/web ./apps/web
 COPY --from=build /app/packages ./packages
 
-EXPOSE 4000
+EXPOSE 3000
 
-CMD ["bun", "--cwd", "apps/api", "run", "start:prod"]
+CMD ["bun", "--cwd", "apps/web", "run", "start"]
