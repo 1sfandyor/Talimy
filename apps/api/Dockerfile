@@ -19,12 +19,13 @@ FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
 
 COPY package.json bun.lock turbo.json tsconfig.base.json ./
-COPY apps/api/package.json ./apps/api/package.json
-COPY apps/web/package.json ./apps/web/package.json
+COPY apps ./apps
 COPY packages ./packages
 COPY tooling ./tooling
 
-RUN NODE_ENV=production bun install --frozen-lockfile
+RUN NODE_ENV=production bun install --frozen-lockfile \
+  && test -d /app/node_modules/zod \
+  && rm -rf /app/apps/api/src
 
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 
