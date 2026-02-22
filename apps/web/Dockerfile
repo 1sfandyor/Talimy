@@ -1,5 +1,6 @@
 FROM oven/bun:1.3.9 AS base
 WORKDIR /app
+ENV NODE_ENV=development
 
 COPY package.json bun.lock turbo.json tsconfig.base.json ./
 COPY apps ./apps
