@@ -1,4 +1,4 @@
-ARG BUN_IMAGE=oven/bun:1.3.4-debian@sha256:9d9504d425a8b85c5cf162c1c354f9403e15583e0f3e1de3750ce3723d3e89ac
+ARG BUN_IMAGE=oven/bun:latest
 
 FROM ${BUN_IMAGE} AS base
 WORKDIR /app
