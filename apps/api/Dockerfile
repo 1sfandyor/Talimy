@@ -11,9 +11,19 @@ RUN NODE_ENV=development bun install --frozen-lockfile
 FROM base AS build
 ENV NODE_ENV=development
 RUN bun --cwd apps/api run build
-RUN (test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main || test -f /app/apps/api/dist/apps/api/src/main.js) \
-  && ! grep -R -n --include='*.js' 'require("@/' /app/apps/api/dist \
-  && ! grep -R -n --include='*.js' 'from "@/' /app/apps/api/dist
+RUN set -eux; \
+  find /app/apps/api/dist -maxdepth 6 -type f | sed -n '1,200p'; \
+  (test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main || test -f /app/apps/api/dist/apps/api/src/main.js)
+RUN set -eux; \
+  if find /app/apps/api/dist -type f -name '*.js' -print0 | xargs -0 grep -n 'require("@/' ; then \
+    echo "Alias require found in dist JS"; \
+    exit 1; \
+  fi
+RUN set -eux; \
+  if find /app/apps/api/dist -type f -name '*.js' -print0 | xargs -0 grep -n 'from "@/' ; then \
+    echo "Alias import found in dist JS"; \
+    exit 1; \
+  fi
 
 
 FROM oven/bun:1.3.9 AS runner
