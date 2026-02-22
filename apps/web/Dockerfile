@@ -6,15 +6,17 @@ COPY apps ./apps
 COPY packages ./packages
 COPY tooling ./tooling
 
-RUN NODE_ENV=development bun install --frozen-lockfile
+RUN HUSKY=0 NODE_ENV=development bun install --frozen-lockfile
 
-FROM base AS build
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+COPY --from=base /app /app
 ARG APP_TARGET=web
 ENV NODE_ENV=production
-RUN bun run --cwd apps/web build
+RUN cd apps/web && node node_modules/next/dist/bin/next build
 RUN test -f /app/apps/web/.next/BUILD_ID
 
-FROM oven/bun:1.3.9 AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -28,4 +30,4 @@ COPY --from=build /app/packages ./packages
 
 EXPOSE 3000
 
-CMD ["bun", "run", "--cwd", "apps/web", "start"]
+CMD ["node", "apps/web/node_modules/next/dist/bin/next", "start", "-p", "3000"]
