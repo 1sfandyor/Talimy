@@ -12,8 +12,9 @@ FROM base AS build
 ENV NODE_ENV=development
 RUN bun --cwd apps/api run build
 RUN (test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main || test -f /app/apps/api/dist/apps/api/src/main.js) \
-  && ! grep -R 'require("@/' /app/apps/api/dist \
-  && ! grep -R 'from "@/' /app/apps/api/dist
+  && ! grep -R -n --include='*.js' 'require("@/' /app/apps/api/dist \
+  && ! grep -R -n --include='*.js' 'from "@/' /app/apps/api/dist
+
 
 FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
