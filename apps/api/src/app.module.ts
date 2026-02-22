@@ -9,6 +9,7 @@ import { RolesGuard } from "./common/guards/roles.guard"
 import { TenantGuard } from "./common/guards/tenant.guard"
 import { LoggerMiddleware } from "./common/middleware/logger.middleware"
 import { TenantMiddleware } from "./common/middleware/tenant.middleware"
+import { PermifyModule } from "./modules/authz/permify/permify.module"
 import { AuthModule } from "./modules/auth/auth.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
 import { ClassesModule } from "./modules/classes/classes.module"
@@ -21,6 +22,7 @@ import { UsersModule } from "./modules/users/users.module"
 @Module({
   imports: [
     SentryModule.forRoot(),
+    PermifyModule,
     AuthModule,
     UsersModule,
     TenantsModule,

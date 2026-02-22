@@ -28,7 +28,7 @@ import { GenderGuard } from "@/common/guards/gender.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
 import { TenantGuard } from "@/common/guards/tenant.guard"
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
-import { PermifyPdpService } from "@/modules/authz/permify/permify-pdp.service"
+import { PermifyPdpService } from "../authz/permify/permify-pdp.service"
 
 import { CreateTeacherDto } from "./dto/create-teacher.dto"
 import { ListTeachersQueryDto } from "./dto/list-teachers-query.dto"
