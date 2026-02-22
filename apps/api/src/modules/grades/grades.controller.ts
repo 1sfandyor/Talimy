@@ -74,8 +74,8 @@ export class GradesController {
 
   @Get("scales")
   @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  listScales(@Query("tenantId") tenantId: string) {
-    return this.gradesService.listScales(tenantId)
+  listScales(@Query() query: { tenantId: string }) {
+    return this.gradesService.listScales(query.tenantId)
   }
 
   @Post("scales")
@@ -99,7 +99,7 @@ export class GradesController {
   @Delete("scales/:id")
   @Roles("platform_admin", "school_admin")
   @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  deleteScale(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.gradesService.deleteScale(tenantId, id)
+  deleteScale(@Query() query: { tenantId: string }, @Param("id") id: string) {
+    return this.gradesService.deleteScale(query.tenantId, id)
   }
 }
