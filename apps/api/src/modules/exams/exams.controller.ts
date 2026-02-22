@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  ParseUUIDPipe,
   Param,
   Patch,
   Post,
@@ -64,10 +65,10 @@ export class ExamsController {
 
   @Get(":id")
   getById(
-    @Param("id") id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Query("tenantId", new ParseUUIDPipe()) tenantId: string
   ) {
-    return this.examsService.getById(query.tenantId, id)
+    return this.examsService.getById(tenantId, id)
   }
 
   @Post()
