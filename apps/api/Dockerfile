@@ -24,7 +24,7 @@ COPY packages ./packages
 COPY tooling ./tooling
 
 RUN NODE_ENV=production bun install --frozen-lockfile \
-  && test -d /app/node_modules/zod \
+  && (test -d /app/node_modules/zod || test -d /app/packages/shared/node_modules/zod) \
   && rm -rf /app/apps/api/src
 
 COPY --from=build /app/apps/api/dist ./apps/api/dist
