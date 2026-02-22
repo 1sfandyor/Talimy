@@ -9,7 +9,7 @@ COPY tooling ./tooling
 RUN NODE_ENV=development bun install --frozen-lockfile
 
 FROM base AS build
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 RUN bun --cwd apps/api run build
 RUN test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main
 

@@ -10,7 +10,7 @@ RUN NODE_ENV=development bun install --frozen-lockfile
 
 FROM base AS build
 ARG APP_TARGET=web
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 RUN bun --cwd apps/web run build
 RUN test -f /app/apps/web/.next/BUILD_ID
 
