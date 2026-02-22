@@ -5,7 +5,12 @@
     "noEmit": false,
     "emitDeclarationOnly": false,
     "declaration": false,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "paths": {
+      "@/*": ["src/*"],
+      "dotenv": ["../../packages/database/node_modules/dotenv/lib/main.d.ts"],
+      "pg": ["../../packages/database/node_modules/@types/pg/index.d.ts"]
+    }
   },
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }

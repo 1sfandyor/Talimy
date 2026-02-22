@@ -6,28 +6,21 @@ COPY apps ./apps
 COPY packages ./packages
 COPY tooling ./tooling
 
-RUN NODE_ENV=development bun install --frozen-lockfile
+RUN HUSKY=0 NODE_ENV=development bun install --frozen-lockfile
 
 FROM base AS build
 ENV NODE_ENV=development
+RUN bun run --cwd packages/shared build
+RUN bun run --cwd packages/database build
 RUN bun run --cwd apps/api build
+RUN test -f /app/apps/api/dist/main.js
 RUN set -eux; \
-  find /app -type f \( -name 'main.js' -o -name 'auth.guard.js' \) | sort | sed -n '1,200p'
-RUN set -eux; \
-  if [ -d /app/apps/api/dist ]; then DIST_DIR=/app/apps/api/dist; \
-  elif [ -d /app/dist ]; then DIST_DIR=/app/dist; \
-  else echo "API dist directory not found"; exit 1; fi; \
-  mkdir -p /app/.docker-artifacts; \
-  rm -rf /app/.docker-artifacts/api-dist; \
-  cp -R "$DIST_DIR" /app/.docker-artifacts/api-dist; \
-  (test -f /app/.docker-artifacts/api-dist/main.js || test -f /app/.docker-artifacts/api-dist/main || test -f /app/.docker-artifacts/api-dist/apps/api/src/main.js)
-RUN set -eux; \
-  if find /app/.docker-artifacts/api-dist -type f -name '*.js' -print0 | xargs -0 grep -n 'require("@/' ; then \
+  if find /app/apps/api/dist -type f -name '*.js' -print0 | xargs -0 grep -n 'require("@/' ; then \
     echo "Alias require found in dist JS"; \
     exit 1; \
   fi
 RUN set -eux; \
-  if find /app/.docker-artifacts/api-dist -type f -name '*.js' -print0 | xargs -0 grep -n 'from "@/' ; then \
+  if find /app/apps/api/dist -type f -name '*.js' -print0 | xargs -0 grep -n 'from "@/' ; then \
     echo "Alias import found in dist JS"; \
     exit 1; \
   fi
@@ -40,7 +33,7 @@ COPY apps ./apps
 COPY packages ./packages
 COPY tooling ./tooling
 
-RUN NODE_ENV=production bun install --frozen-lockfile
+RUN HUSKY=0 NODE_ENV=production bun install --frozen-lockfile
 
 
 FROM oven/bun:1.3.9 AS runner
@@ -54,16 +47,17 @@ COPY --from=deps-prod /app/bun.lock ./bun.lock
 COPY --from=deps-prod /app/node_modules ./node_modules
 COPY --from=deps-prod /app/apps/api/package.json ./apps/api/package.json
 COPY --from=deps-prod /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build /app/.docker-artifacts/api-dist ./apps/api/dist
+COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=deps-prod /app/packages ./packages
-RUN set -eux; \
-  mkdir -p /app/apps/api/dist/packages/database /app/apps/api/dist/packages/shared; \
-  if [ -d /app/packages/database/node_modules ]; then cp -R /app/packages/database/node_modules /app/apps/api/dist/packages/database/node_modules; fi; \
-  if [ -d /app/packages/shared/node_modules ]; then cp -R /app/packages/shared/node_modules /app/apps/api/dist/packages/shared/node_modules; fi
+COPY --from=build /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build /app/packages/database/dist ./packages/database/dist
 RUN test -d /app/apps/api/node_modules/@nestjs/common \
-  && (test -d /app/apps/api/dist/packages/database/node_modules/dotenv || test -d /app/apps/api/node_modules/dotenv || test -d /app/node_modules/dotenv) \
-  && (test -d /app/apps/api/dist/packages/database/node_modules/pg || test -d /app/apps/api/node_modules/pg || test -d /app/node_modules/pg) \
-  && (test -d /app/apps/api/dist/packages/shared/node_modules/zod || test -d /app/packages/shared/node_modules/zod || test -d /app/node_modules/zod || test -d /app/apps/api/node_modules/zod)
+  && test -f /app/apps/api/dist/main.js \
+  && test -f /app/packages/shared/dist/index.js \
+  && test -f /app/packages/database/dist/index.js \
+  && (test -d /app/packages/shared/node_modules/zod || test -d /app/apps/api/node_modules/zod || test -d /app/node_modules/zod) \
+  && (test -d /app/packages/database/node_modules/dotenv || test -d /app/apps/api/node_modules/dotenv || test -d /app/node_modules/dotenv) \
+  && (test -d /app/packages/database/node_modules/pg || test -d /app/apps/api/node_modules/pg || test -d /app/node_modules/pg)
 
 EXPOSE 4000
 CMD ["bun", "run", "--cwd", "apps/api", "start:prod"]

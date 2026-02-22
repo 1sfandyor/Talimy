@@ -2,9 +2,12 @@
   "name": "@talimy/shared",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
-  "main": "./src/index",
-  "types": "./src/index",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
   "dependencies": {
     "zod": "^3.24.1"
   }
