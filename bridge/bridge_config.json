@@ -13,18 +13,24 @@
     "binary": "codex",
     "timeout_seconds": 300
   },
+  "task_check_mapping": {
+    "2.x": "api",
+    "3.x": "web",
+    "4.x": "web",
+    "5.x": "web",
+    "6.x": "web",
+    "7.x": "web",
+    "8.x": "web",
+    "9.x": "web",
+    "10.x": "web",
+    "11.x": "web",
+    "12.x": "web",
+    "16.x": "default",
+    "17.x": "default"
+  },
   "server_checks": {
-    "default": [
-      "bun run typecheck --filter=api",
-      "bun run lint --filter=api"
-    ],
-    "api": [
-      "bun run typecheck --filter=api",
-      "bun run lint --filter=api"
-    ],
-    "web": [
-      "bun run typecheck --filter=web",
-      "bun run lint --filter=web"
-    ]
+    "default": ["bun run typecheck --filter=api", "bun run lint --filter=api"],
+    "api": ["bun run typecheck --filter=api", "bun run lint --filter=api"],
+    "web": ["bun run typecheck --filter=web", "bun run lint --filter=web"]
   }
 }

@@ -56,6 +56,13 @@ class BridgeConfig:
     def server_checks(self) -> dict[str, list[str]]:
         return {k: list(v) for k, v in dict(self.raw.get("server_checks", {})).items()}
 
+    @property
+    def task_check_mapping(self) -> dict[str, str]:
+        return {
+            str(k): str(v)
+            for k, v in dict(self.raw.get("task_check_mapping", {})).items()
+        }
+
 
 class JsonStore:
     def __init__(self, results_dir: Path) -> None:
@@ -111,13 +118,30 @@ def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
     }
 
 
-def detect_check_set(task: str, checks: dict[str, list[str]]) -> list[str]:
+TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
+
+
+def detect_check_set(
+    task: str,
+    checks: dict[str, list[str]],
+    task_mapping: dict[str, str],
+) -> tuple[str, list[str]]:
     task_l = task.lower()
+
+    match = TASK_NUMBER_RE.search(task)
+    if match:
+        task_no = f"{match.group('phase')}.{match.group('task')}"
+        phase_no = match.group("phase")
+        for key in (task_no, f"{phase_no}.x", phase_no):
+            mapped_check_key = task_mapping.get(key)
+            if mapped_check_key:
+                return mapped_check_key, checks.get(mapped_check_key, checks.get("default", []))
+
     if any(token in task_l for token in ["api", "backend", "nest"]):
-        return checks.get("api", checks.get("default", []))
+        return "api", checks.get("api", checks.get("default", []))
     if any(token in task_l for token in ["web", "frontend", "next", "platform"]):
-        return checks.get("web", checks.get("default", []))
-    return checks.get("default", [])
+        return "web", checks.get("web", checks.get("default", []))
+    return "default", checks.get("default", [])
 
 
 def run_server_codex_review(trigger: dict[str, Any], config: BridgeConfig, repo_path: Path) -> dict[str, Any] | None:
@@ -236,7 +260,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
             )
             return
 
-    checks = detect_check_set(task, config.server_checks)
+    check_set_name, checks = detect_check_set(task, config.server_checks, config.task_check_mapping)
     check_results: list[dict[str, Any]] = []
     check_errors: list[str] = []
     for cmd in checks:
@@ -274,6 +298,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         "stage": "completed",
         "git": git_steps,
         "checks": check_results,
+        "check_set": check_set_name,
         "codex_review": codex_review,
         "finished_at": int(time.time()),
     }
