@@ -431,7 +431,7 @@ Status: In execution (track by phase/task status markers below)
 4. `*.service.ts` 300+ qatorga yaqinlashsa (yoki oshsa) darhol modullarga bo'linadi.
 5. Refactor faqat minimal-diff bilan qilinadi; mavjud behavior o'zgarmasligi shart.
 6. Har bir yangi subtaskni boshlashdan oldin `docReja/Reja.md` va `docReja/Documentation.html` qayta o'qilib, aniq acceptance va scope bo'yicha checklist tuziladi.
-7. Env talab qiladigan integratsiya (masalan Permify PDP) uchun aniq env path ko'rsatiladi: backend qiymatlar `apps/api/.env` ga yoziladi.
+7. Env talab qiladigan integratsiya (masalan Permify PDP) uchun aniq env path ko'rsatiladi: backend qiymatlar `apps/api/.env` ga yoziladi (`PERMIFY_GRPC_ENDPOINT`, `PERMIFY_SCHEMA_VERSION`, `PERMIFY_TIMEOUT_MS`, `PERMIFY_INSECURE`).
 
 ### Task 2.1: NestJS Project Setup
 

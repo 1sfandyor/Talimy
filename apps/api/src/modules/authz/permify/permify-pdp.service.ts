@@ -1,4 +1,5 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common"
+import * as permify from "@permify/permify-node"
+import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common"
 
 import { getPermifyConfig } from "@/config/permify.config"
 
@@ -19,47 +20,117 @@ type PermifyCheckInput = {
 export class PermifyPdpService {
   private readonly logger = new Logger(PermifyPdpService.name)
   private readonly cfg = getPermifyConfig()
+  private client: permify.grpc.PermifyClient | null = null
 
   async assertGenderAccess(input: PermifyCheckInput): Promise<void> {
-    if (!this.cfg.enabled || !this.cfg.endpoint) {
+    if (!this.cfg.enabled || !this.cfg.grpcEndpoint) {
       this.failClosed("Permify PDP is not configured")
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), this.cfg.requestTimeoutMs)
     try {
-      const response = await fetch(this.cfg.endpoint!, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+      const response = await this.withTimeout(
+        this.getClient().permission.check({
           tenantId: input.tenantId,
-          userId: input.userId,
-          roles: input.roles,
-          userGenderScope: input.userGenderScope,
-          entity: input.entity,
-          action: input.action,
-          targetGender: input.targetGender,
-          schemaVersion: this.cfg.schemaVersion,
-        }),
-        signal: controller.signal,
-      })
+          metadata: {
+            snapToken: "",
+            schemaVersion: this.cfg.schemaVersion ?? "",
+            depth: 20,
+          },
+          entity: {
+            type: this.toPermifyEntityType(input.entity),
+            id: this.toPermifyEntityId(input),
+          },
+          permission: this.toPermifyPermission(input.action),
+          subject: {
+            type: "user",
+            id: input.userId,
+            relation: "",
+          },
+          context: {
+            tuples: [],
+            attributes: [],
+            data: {
+              roles: input.roles,
+              userGenderScope: input.userGenderScope,
+              targetGender: input.targetGender ?? null,
+              entity: input.entity,
+              action: input.action,
+            },
+          },
+          arguments: [],
+        })
+      )
 
-      if (!response.ok) {
-        this.failClosed(`Permify PDP returned ${response.status}`)
+      if (response.can === permify.grpc.base.CheckResult.CHECK_RESULT_ALLOWED) {
+        return
       }
 
-      const body = (await response.json()) as { allow?: boolean }
-      if (body.allow !== true) {
-        this.failClosed("Permify PDP denied or malformed response")
+      if (response.can === permify.grpc.base.CheckResult.CHECK_RESULT_DENIED) {
+        throw new ForbiddenException("Authorization policy denied")
       }
+
+      this.failClosed("Permify PDP returned an unknown decision")
     } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error
+      }
+
       const reason = error instanceof Error ? error.message : "unknown error"
       this.failClosed(`Permify PDP request failed: ${reason}`)
-    } finally {
-      clearTimeout(timeout)
     }
+  }
+
+  private getClient(): permify.grpc.PermifyClient {
+    if (this.client) {
+      return this.client
+    }
+
+    if (!this.cfg.grpcEndpoint) {
+      this.failClosed("Permify gRPC endpoint is missing")
+    }
+
+    this.client = permify.grpc.newClient({
+      endpoint: this.cfg.grpcEndpoint,
+      cert: null,
+      pk: null,
+      certChain: null,
+      insecure: this.cfg.insecure,
+    })
+
+    return this.client
+  }
+
+  private async withTimeout<T>(promise: Promise<T>): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(`timeout after ${this.cfg.requestTimeoutMs}ms`))
+          }, this.cfg.requestTimeoutMs)
+        }),
+      ])
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }
+
+  private toPermifyEntityType(entity: GenderEntity): string {
+    return `${entity}_gender_policy`
+  }
+
+  private toPermifyEntityId(input: PermifyCheckInput): string {
+    return input.targetGender
+      ? `${input.tenantId}:${input.entity}:${input.targetGender}`
+      : `${input.tenantId}:${input.entity}`
+  }
+
+  private toPermifyPermission(action: GenderAction): string {
+    return `gender_${action}`
   }
 
   private failClosed(reason: string): never {
