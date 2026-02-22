@@ -13,6 +13,7 @@ import { PermifyModule } from "./modules/authz/permify/permify.module"
 import { AuthModule } from "./modules/auth/auth.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
 import { ClassesModule } from "./modules/classes/classes.module"
+import { ExamsModule } from "./modules/exams/exams.module"
 import { GradesModule } from "./modules/grades/grades.module"
 import { ParentsModule } from "./modules/parents/parents.module"
 import { StudentsModule } from "./modules/students/students.module"
@@ -33,6 +34,7 @@ import { UsersModule } from "./modules/users/users.module"
     ClassesModule,
     AttendanceModule,
     GradesModule,
+    ExamsModule,
   ],
   controllers: [AppController],
   providers: [
