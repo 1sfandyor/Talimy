@@ -10,7 +10,7 @@ RUN NODE_ENV=development bun install --frozen-lockfile
 
 FROM base AS build
 ENV NODE_ENV=development
-RUN bun --cwd apps/api run build
+RUN bun run --cwd apps/api build
 RUN set -eux; \
   find /app -type f \( -name 'main.js' -o -name 'auth.guard.js' \) | sort | sed -n '1,200p'
 RUN set -eux; \
@@ -47,4 +47,4 @@ COPY --from=build /app/.docker-artifacts/api-dist ./apps/api/dist
 COPY --from=build /app/packages ./packages
 
 EXPOSE 4000
-CMD ["bun", "--cwd", "apps/api", "run", "start:prod"]
+CMD ["bun", "run", "--cwd", "apps/api", "start:prod"]
