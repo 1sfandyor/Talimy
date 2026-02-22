@@ -1,4 +1,6 @@
-FROM oven/bun:1.3.9-alpine AS base
+ARG BUN_IMAGE=oven/bun:1.3.4-alpine@sha256:1d653098bf847813e26adb2435f932b7cfa3c132a7e25dd5216dbb1f67dbd118
+
+FROM ${BUN_IMAGE} AS base
 WORKDIR /app
 
 COPY package.json bun.lock turbo.json tsconfig.base.json ./
@@ -8,7 +10,7 @@ COPY tooling ./tooling
 
 RUN HUSKY=0 NODE_ENV=development bun install --frozen-lockfile
 
-FROM oven/bun:1.3.9-alpine AS build
+FROM ${BUN_IMAGE} AS build
 WORKDIR /app
 COPY --from=base /app /app
 ARG APP_TARGET=web
@@ -17,7 +19,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run --smol --cwd apps/web build
 RUN test -f /app/apps/web/.next/BUILD_ID
 
-FROM oven/bun:1.3.9-alpine AS runner
+FROM ${BUN_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
