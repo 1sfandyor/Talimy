@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "nest build && bunx tsc-alias -p tsconfig.build.json",
     "lint": "bunx eslint .",
     "lint:fix": "bunx eslint . --fix",
     "typecheck": "tsc --noEmit",
@@ -41,6 +41,7 @@
     "@talimy/eslint-config": "workspace:*",
     "@talimy/typescript-config": "workspace:*",
     "eslint": "^9.39.2",
+    "tsc-alias": "^1.8.16",
     "typescript": "^5.9.3"
   }
 }
