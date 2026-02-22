@@ -32,6 +32,16 @@ RUN set -eux; \
     exit 1; \
   fi
 
+FROM oven/bun:1.3.9 AS deps-prod
+WORKDIR /app
+
+COPY package.json bun.lock turbo.json tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY tooling ./tooling
+
+RUN NODE_ENV=production bun install --frozen-lockfile
+
 
 FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
@@ -39,13 +49,13 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/bun.lock ./bun.lock
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
-COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps-prod /app/package.json ./package.json
+COPY --from=deps-prod /app/bun.lock ./bun.lock
+COPY --from=deps-prod /app/node_modules ./node_modules
+COPY --from=deps-prod /app/apps/api/package.json ./apps/api/package.json
+COPY --from=deps-prod /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /app/.docker-artifacts/api-dist ./apps/api/dist
-COPY --from=build /app/packages ./packages
+COPY --from=deps-prod /app/packages ./packages
 RUN test -d /app/apps/api/node_modules/@nestjs/common \
   && (test -d /app/packages/shared/node_modules/zod || test -d /app/node_modules/zod || test -d /app/apps/api/node_modules/zod)
 
