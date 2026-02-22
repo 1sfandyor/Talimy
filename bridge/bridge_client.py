@@ -65,6 +65,14 @@ class Config:
     def request_timeout_seconds(self) -> int:
         return int(self.raw.get("request_timeout_seconds", 15))
 
+    @property
+    def github_ci(self) -> dict[str, Any]:
+        return dict(self.raw.get("github_ci", {}))
+
+    @property
+    def telegram(self) -> dict[str, Any]:
+        return dict(self.raw.get("telegram", {}))
+
 
 def load_config() -> Config:
     return Config(raw=json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
@@ -99,6 +107,10 @@ def run_git(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=str(cwd), capture_output=True, text=True)
 
 
+def run_cmd(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, cwd=None if cwd is None else str(cwd), capture_output=True, text=True)
+
+
 def current_commit(cwd: Path) -> str:
     res = run_git(["git", "rev-parse", "HEAD"], cwd)
     if res.returncode != 0:
@@ -106,13 +118,15 @@ def current_commit(cwd: Path) -> str:
     return res.stdout.strip()
 
 
-def push_and_trigger(task: str, cfg: Config) -> str:
+def push_commit(cfg: Config) -> str:
     repo = cfg.laptop_repo_path
     push = run_git(["git", "push", "origin", cfg.branch], repo)
     if push.returncode != 0:
         raise RuntimeError(push.stderr.strip() or push.stdout.strip() or "git push failed")
+    return current_commit(repo)
 
-    commit = current_commit(repo)
+
+def trigger_server(task: str, commit: str, cfg: Config) -> str:
     job_id = uuid.uuid4().hex
     server = f"http://{cfg.server_host}:{cfg.bridge_port}"
     code, resp = http_json(
@@ -125,6 +139,148 @@ def push_and_trigger(task: str, cfg: Config) -> str:
     if code != 200:
         raise RuntimeError(f"bridge trigger failed ({code}): {resp}")
     return job_id
+
+
+def repo_slug_from_git_remote(repo: Path) -> str | None:
+    remote = run_git(["git", "remote", "get-url", "origin"], repo)
+    if remote.returncode != 0:
+        return None
+    url = remote.stdout.strip()
+    if not url:
+        return None
+    # https://github.com/owner/repo(.git)
+    m = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", url)
+    if not m:
+        return None
+    return f"{m.group('owner')}/{m.group('repo')}"
+
+
+def write_last_result(payload: dict[str, Any]) -> None:
+    LAST_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LAST_RESULT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def wait_for_github_ci(commit: str, task: str, cfg: Config) -> dict[str, Any] | None:
+    ci_cfg = cfg.github_ci
+    if not bool(ci_cfg.get("enabled", False)):
+        return None
+
+    repo = cfg.laptop_repo_path
+    repo_slug = str(ci_cfg.get("repo", "")).strip() or repo_slug_from_git_remote(repo)
+    if not repo_slug:
+        return {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": ["GitHub repo slug aniqlanmadi (origin remote)."],
+            "warnings": [],
+            "suggestions": ["bridge_config.json ichiga github_ci.repo = \"owner/repo\" qo'shing."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "github_ci",
+        }
+
+    timeout_seconds = int(ci_cfg.get("timeout_seconds", 1800))
+    interval_seconds = int(ci_cfg.get("poll_interval_seconds", cfg.poll_interval_seconds))
+    watch_workflows = {str(x).strip() for x in ci_cfg.get("workflows", []) if str(x).strip()}
+
+    started = time.time()
+    dots = 0
+    last_runs: list[dict[str, Any]] = []
+
+    while time.time() - started < timeout_seconds:
+        cmd = [
+            "gh",
+            "run",
+            "list",
+            "--repo",
+            repo_slug,
+            "--commit",
+            commit,
+            "--limit",
+            "20",
+            "--json",
+            "databaseId,workflowName,status,conclusion,url,headSha,displayTitle",
+        ]
+        res = run_cmd(cmd, repo)
+        if res.returncode != 0:
+            return {
+                "status": "failure",
+                "tests_passed": False,
+                "errors": ["GitHub CI holatini olishda xato (gh run list).", res.stderr.strip() or res.stdout.strip()],
+                "warnings": [],
+                "suggestions": ["Laptopda gh CLI login/auth ni tekshiring: gh auth status"],
+                "next_action": "fix_required",
+                "task": task,
+                "commit": commit,
+                "stage": "github_ci",
+            }
+
+        try:
+            runs = json.loads(res.stdout or "[]")
+        except json.JSONDecodeError:
+            runs = []
+        runs = [r for r in runs if str(r.get("headSha", "")).startswith(commit)]
+        if watch_workflows:
+            runs = [r for r in runs if str(r.get("workflowName", "")) in watch_workflows]
+        last_runs = runs
+
+        if runs:
+            pending = [r for r in runs if str(r.get("status", "")) != "completed"]
+            if not pending:
+                failed = [
+                    r
+                    for r in runs
+                    if str(r.get("conclusion", "")).lower() not in {"success", "skipped", "neutral"}
+                ]
+                if failed:
+                    return {
+                        "status": "failure",
+                        "tests_passed": False,
+                        "errors": [
+                            f"GitHub CI failed: {r.get('workflowName')} ({r.get('conclusion')})"
+                            for r in failed
+                        ],
+                        "warnings": [],
+                        "suggestions": [
+                            "gh run view <run-id> --log-failed bilan CI logni ko'ring.",
+                            "Xatoni tuzatib qayta commit/push qiling.",
+                        ],
+                        "next_action": "fix_required",
+                        "task": task,
+                        "commit": commit,
+                        "stage": "github_ci",
+                        "github_ci": {"repo": repo_slug, "runs": runs},
+                    }
+                return {
+                    "status": "success",
+                    "tests_passed": True,
+                    "errors": [],
+                    "warnings": [],
+                    "suggestions": [],
+                    "next_action": "proceed",
+                    "task": task,
+                    "commit": commit,
+                    "stage": "github_ci",
+                    "github_ci": {"repo": repo_slug, "runs": runs},
+                }
+
+        dots = (dots + 1) % 4
+        print(f"\r[bridge-client] waiting for GitHub CI{'.' * dots}   ", end="", flush=True)
+        time.sleep(interval_seconds)
+
+    return {
+        "status": "failure",
+        "tests_passed": False,
+        "errors": ["GitHub CI wait timeout."],
+        "warnings": [],
+        "suggestions": ["GitHub Actions run holatini tekshiring (gh run list / GitHub UI)."],
+        "next_action": "fix_required",
+        "task": task,
+        "commit": commit,
+        "stage": "github_ci",
+        "github_ci": {"repo": repo_slug, "runs": last_runs},
+    }
 
 
 def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dict[str, Any] | None:
@@ -140,8 +296,7 @@ def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dic
             cfg.shared_secret,
         )
         if code == 200:
-            LAST_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
-            LAST_RESULT_PATH.write_text(json.dumps(resp, indent=2), encoding="utf-8")
+            write_last_result(resp)
             print("\n[bridge-client] result received")
             return resp
         if code not in (404,):
@@ -151,6 +306,84 @@ def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dic
         time.sleep(cfg.poll_interval_seconds)
     print("\n[bridge-client] timeout waiting for result")
     return None
+
+
+def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
+    tg = cfg.telegram
+    if not bool(tg.get("enabled", False)):
+        return
+
+    bot_token = str(tg.get("bot_token", "")).strip()
+    chat_id = str(tg.get("chat_id", "")).strip()
+    if not bot_token or not chat_id:
+        return
+
+    status = str(result.get("status", "unknown")).upper()
+    task = str(result.get("task", ""))
+    commit = str(result.get("commit", ""))[:12]
+    next_action = str(result.get("next_action", "unknown"))
+    stage = str(result.get("stage", ""))
+    errors = [str(x) for x in result.get("errors", [])][:5]
+    check_set = str(result.get("check_set", ""))
+
+    lines = [
+        f"Talimy Bridge: {status}",
+        f"Task: {task}",
+        f"Commit: {commit}",
+        f"Stage: {stage}",
+    ]
+    if check_set:
+        lines.append(f"Check set: {check_set}")
+    lines.append(f"Next action: {next_action}")
+    if errors:
+        lines.append("Errors:")
+        lines.extend([f"- {e}" for e in errors])
+
+    payload = {"chat_id": chat_id, "text": "\n".join(lines)}
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    try:
+        http_json("POST", url, payload, cfg.request_timeout_seconds, token="")
+    except Exception:
+        return
+
+
+def run_push_ci_server_flow(task: str, cfg: Config) -> int:
+    commit = push_commit(cfg)
+    print(f"[bridge-client] pushed commit={commit[:12]}")
+
+    ci_result = wait_for_github_ci(commit, task, cfg)
+    if ci_result is not None:
+        print("")
+        if ci_result.get("next_action") != "proceed":
+            write_last_result(ci_result)
+            send_telegram_notification(ci_result, cfg)
+            return summarize_result(ci_result)
+
+    job_id = trigger_server(task, commit, cfg)
+    print(f"[bridge-client] triggered server checks, job_id={job_id}")
+    result = wait_for_result(job_id, cfg)
+    if result is None:
+        timeout_result = {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": ["Bridge server result timeout."],
+            "warnings": [],
+            "suggestions": ["Server bridge logsini tekshiring."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "bridge_server",
+            "job_id": job_id,
+        }
+        write_last_result(timeout_result)
+        send_telegram_notification(timeout_result, cfg)
+        return summarize_result(timeout_result)
+
+    if ci_result is not None:
+        result["github_ci"] = ci_result.get("github_ci", {})
+        write_last_result(result)
+    send_telegram_notification(result, cfg)
+    return summarize_result(result)
 
 
 def summarize_result(result: dict[str, Any]) -> int:
@@ -223,12 +456,7 @@ def main() -> int:
             print("Task description required")
             return 1
         task = sys.argv[2]
-        job_id = push_and_trigger(task, cfg)
-        print(f"[bridge-client] pushed and triggered, job_id={job_id}")
-        result = wait_for_result(job_id, cfg)
-        if result is None:
-            return 1
-        return summarize_result(result)
+        return run_push_ci_server_flow(task, cfg)
 
     if cmd == "wait":
         if len(sys.argv) < 3:
@@ -247,12 +475,8 @@ def main() -> int:
             return 1
         task_no, title = nxt
         task = f"{task_no} {title}"
-        job_id = push_and_trigger(task, cfg)
-        print(f"[bridge-client] pushed and triggered next task, job_id={job_id}, task={task}")
-        result = wait_for_result(job_id, cfg)
-        if result is None:
-            return 1
-        return summarize_result(result)
+        print(f"[bridge-client] next task selected: {task}")
+        return run_push_ci_server_flow(task, cfg)
 
     return usage()
 

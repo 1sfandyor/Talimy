@@ -8,6 +8,18 @@
   "tasks_file": "docReja/Reja.md",
   "poll_interval_seconds": 5,
   "request_timeout_seconds": 15,
+  "github_ci": {
+    "enabled": true,
+    "repo": "1sfandyor/Talimy",
+    "timeout_seconds": 2400,
+    "poll_interval_seconds": 10,
+    "workflows": ["CD API", "CD Web", "CD Platform"]
+  },
+  "telegram": {
+    "enabled": false,
+    "bot_token": "",
+    "chat_id": ""
+  },
   "server_codex": {
     "enabled": true,
     "binary": "codex",

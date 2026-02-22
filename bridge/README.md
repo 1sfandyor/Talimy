@@ -16,6 +16,8 @@ Bu bridge Talimy workflow uchun moslashtirilgan:
 - Natija `job_id` bo'yicha olinadi (race condition kamayadi)
 - Server checklar config orqali mapping qilinadi (`api`, `web`, `default`)
 - `task_check_mapping` orqali `docReja` task raqamiga qarab check set tanlanadi (masalan `2.x -> api`)
+- GitHub Actions CI holatini `gh` CLI orqali poll qiladi (pushdan keyin)
+- Telegram botga task yakuni bo'yicha xabar yuborishi mumkin
 - `TASKS.md` checkbox formatiga bog'lanmagan
 
 ## 1) Konfiguratsiya (`bridge/bridge_config.json`)
@@ -37,6 +39,10 @@ python3 bridge/bridge_server.py
 Tavsiya: `tmux`/`screen` ichida ishlatish.
 
 ## 3) Laptopdan ishlatish
+
+Prerequisite:
+
+- `gh` CLI o'rnatilgan va login qilingan (`gh auth status`)
 
 Manual task:
 
@@ -69,6 +75,14 @@ Server `/result?job_id=...` endpoint JSON qaytaradi:
 - `checks[]` (buyruqlar stdout/stderr bilan)
 - `codex_review` (yoqilgan bo'lsa)
 
+`push` / `bridge-push-next` oqimi:
+
+1. `git push`
+2. GitHub Actions CI wait (`github_ci` config bo'yicha)
+3. CI success bo'lsa bridge server trigger
+4. Server deterministic checks + optional server Codex review
+5. Telegram notify (yoqilgan bo'lsa)
+
 ## 5) Tavsiya etiladigan server check mapping
 
 `bridge_config.json` ichida `server_checks`ni Talimy taskiga moslab saqlang:
@@ -83,3 +97,14 @@ Server `/result?job_id=...` endpoint JSON qaytaradi:
 - `16.x`, `17.x` -> `default` (custom checklarni qo'shasiz)
 
 CI/Dokploy verification alohida qoladi; bridge local/server smoke checks uchun ishlatiladi.
+
+## 6) Qo'shimcha config (GitHub CI + Telegram)
+
+`bridge_config.json` ichida:
+
+- `github_ci.enabled`
+- `github_ci.repo` (`owner/repo`)
+- `github_ci.workflows` (kuzatiladigan workflow nomlari)
+- `telegram.enabled`
+- `telegram.bot_token`
+- `telegram.chat_id`
