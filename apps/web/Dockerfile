@@ -10,8 +10,9 @@ RUN NODE_ENV=development bun install --frozen-lockfile
 
 FROM base AS build
 ARG APP_TARGET=web
-ENV NODE_ENV=production
-RUN bun run --cwd apps/web build && test -f /app/apps/web/.next/BUILD_ID
+ENV NODE_ENV=development
+RUN bun --cwd apps/web run build
+RUN test -f /app/apps/web/.next/BUILD_ID
 
 FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
@@ -27,4 +28,4 @@ COPY --from=build /app/packages ./packages
 
 EXPOSE 3000
 
-CMD ["bun", "run", "--cwd", "apps/web", "start"]
+CMD ["bun", "--cwd", "apps/web", "run", "start"]
