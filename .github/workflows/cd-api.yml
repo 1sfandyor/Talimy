@@ -91,8 +91,19 @@ jobs:
         env:
           DOKPLOY_DEPLOY_HOOK: ${{ secrets.DOKPLOY_API_DEPLOY_HOOK }}
         run: |
-          if [ -z "$DOKPLOY_DEPLOY_HOOK" ]; then
+          HOOK="$(printf '%s' "$DOKPLOY_DEPLOY_HOOK" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//')"
+
+          if [ -z "$HOOK" ]; then
             echo "DOKPLOY_API_DEPLOY_HOOK is not set. Skipping deploy trigger."
             exit 0
           fi
-          curl -fsSL -X POST "$DOKPLOY_DEPLOY_HOOK"
+
+          case "$HOOK" in
+            http://*|https://*) ;;
+            *)
+              echo "DOKPLOY_API_DEPLOY_HOOK is not a valid http(s) URL."
+              exit 1
+              ;;
+          esac
+
+          curl -fsSL -X POST "$HOOK"
