@@ -47,21 +47,19 @@ export class GradesController {
   }
 
   @Get("student/:studentId")
-  @UsePipes(new ZodValidationPipe(gradeQuerySchema))
   byStudent(
     @Param("studentId") studentId: string,
     @Query("tenantId") tenantId: string,
-    @Query() query: GradeQueryDto
+    @Query(new ZodValidationPipe(gradeQuerySchema)) query: GradeQueryDto
   ) {
     return this.gradesService.getByStudent(tenantId, studentId, query)
   }
 
   @Get("class/:classId")
-  @UsePipes(new ZodValidationPipe(gradeQuerySchema))
   byClass(
     @Param("classId") classId: string,
     @Query("tenantId") tenantId: string,
-    @Query() query: GradeQueryDto
+    @Query(new ZodValidationPipe(gradeQuerySchema)) query: GradeQueryDto
   ) {
     return this.gradesService.getByClass(tenantId, classId, query)
   }
@@ -87,19 +85,20 @@ export class GradesController {
 
   @Patch("scales/:id")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(updateGradeScaleSchema))
   updateScale(
     @Query("tenantId") tenantId: string,
     @Param("id") id: string,
-    @Body() payload: UpdateGradeScaleDto
+    @Body(new ZodValidationPipe(updateGradeScaleSchema)) payload: UpdateGradeScaleDto
   ) {
     return this.gradesService.updateScale(tenantId, id, payload)
   }
 
   @Delete("scales/:id")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  deleteScale(@Query() query: { tenantId: string }, @Param("id") id: string) {
+  deleteScale(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
+    @Param("id") id: string
+  ) {
     return this.gradesService.deleteScale(query.tenantId, id)
   }
 }
