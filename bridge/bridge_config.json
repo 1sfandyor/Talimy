@@ -1,0 +1,30 @@
+{
+  "server_host": "10.66.66.1",
+  "bridge_port": 8765,
+  "shared_secret": "CHANGE_ME_STRONG_SECRET",
+  "branch": "main",
+  "server_repo_path": "/home/isfan/talimy",
+  "laptop_repo_path": "C:/Users/isfan/Desktop/talimy",
+  "tasks_file": "docReja/Reja.md",
+  "poll_interval_seconds": 5,
+  "request_timeout_seconds": 15,
+  "server_codex": {
+    "enabled": true,
+    "binary": "codex",
+    "timeout_seconds": 300
+  },
+  "server_checks": {
+    "default": [
+      "bun run typecheck --filter=api",
+      "bun run lint --filter=api"
+    ],
+    "api": [
+      "bun run typecheck --filter=api",
+      "bun run lint --filter=api"
+    ],
+    "web": [
+      "bun run typecheck --filter=web",
+      "bun run lint --filter=web"
+    ]
+  }
+}

@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""Talimy Bridge Client
+
+Laptop-side bridge client that pushes to GitHub, notifies bridge server, waits for result,
+and optionally helps pick the next task from docReja/Reja.md tracker table.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from urllib import error, parse, request
+
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BASE_DIR / "bridge_config.json"
+LAST_RESULT_PATH = BASE_DIR / ".bridge-state" / "last_bridge_result.json"
+
+REJA_ROW_RE = re.compile(
+    r"^\|\s*(?P<task_no>2\.\d+)\s*\|\s*(?P<title>[^|]+?)\s*\|\s*(?P<status>[^|]+?)\s*\|",
+    re.UNICODE,
+)
+
+
+@dataclass
+class Config:
+    raw: dict[str, Any]
+
+    @property
+    def server_host(self) -> str:
+        return str(self.raw["server_host"])
+
+    @property
+    def bridge_port(self) -> int:
+        return int(self.raw.get("bridge_port", 8765))
+
+    @property
+    def branch(self) -> str:
+        return str(self.raw.get("branch", "main"))
+
+    @property
+    def shared_secret(self) -> str:
+        return str(self.raw.get("shared_secret", ""))
+
+    @property
+    def laptop_repo_path(self) -> Path:
+        return Path(str(self.raw.get("laptop_repo_path", ".")))
+
+    @property
+    def tasks_file(self) -> Path:
+        return Path(str(self.raw.get("tasks_file", "docReja/Reja.md")))
+
+    @property
+    def poll_interval_seconds(self) -> int:
+        return int(self.raw.get("poll_interval_seconds", 5))
+
+    @property
+    def request_timeout_seconds(self) -> int:
+        return int(self.raw.get("request_timeout_seconds", 15))
+
+
+def load_config() -> Config:
+    return Config(raw=json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+
+
+def http_json(
+    method: str,
+    url: str,
+    payload: dict[str, Any] | None,
+    timeout: int,
+    token: str,
+) -> tuple[int, dict[str, Any]]:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    req = request.Request(url, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    if token:
+        req.add_header("X-Bridge-Token", token)
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return resp.status, json.loads(body) if body else {}
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        try:
+            parsed = json.loads(body) if body else {"status": "http_error"}
+        except Exception:
+            parsed = {"status": "http_error", "body": body}
+        return exc.code, parsed
+
+
+def run_git(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, cwd=str(cwd), capture_output=True, text=True)
+
+
+def current_commit(cwd: Path) -> str:
+    res = run_git(["git", "rev-parse", "HEAD"], cwd)
+    if res.returncode != 0:
+        raise RuntimeError(res.stderr.strip() or "git rev-parse failed")
+    return res.stdout.strip()
+
+
+def push_and_trigger(task: str, cfg: Config) -> str:
+    repo = cfg.laptop_repo_path
+    push = run_git(["git", "push", "origin", cfg.branch], repo)
+    if push.returncode != 0:
+        raise RuntimeError(push.stderr.strip() or push.stdout.strip() or "git push failed")
+
+    commit = current_commit(repo)
+    job_id = uuid.uuid4().hex
+    server = f"http://{cfg.server_host}:{cfg.bridge_port}"
+    code, resp = http_json(
+        "POST",
+        f"{server}/trigger",
+        {"task": task, "commit": commit, "job_id": job_id, "timestamp": int(time.time())},
+        cfg.request_timeout_seconds,
+        cfg.shared_secret,
+    )
+    if code != 200:
+        raise RuntimeError(f"bridge trigger failed ({code}): {resp}")
+    return job_id
+
+
+def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dict[str, Any] | None:
+    server = f"http://{cfg.server_host}:{cfg.bridge_port}"
+    started = time.time()
+    dots = 0
+    while time.time() - started < timeout_seconds:
+        code, resp = http_json(
+            "GET",
+            f"{server}/result?job_id={parse.quote(job_id)}",
+            None,
+            cfg.request_timeout_seconds,
+            cfg.shared_secret,
+        )
+        if code == 200:
+            LAST_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            LAST_RESULT_PATH.write_text(json.dumps(resp, indent=2), encoding="utf-8")
+            print("\n[bridge-client] result received")
+            return resp
+        if code not in (404,):
+            print(f"\n[bridge-client] unexpected response {code}: {resp}")
+        dots = (dots + 1) % 4
+        print(f"\r[bridge-client] waiting for server result{'.' * dots}   ", end="", flush=True)
+        time.sleep(cfg.poll_interval_seconds)
+    print("\n[bridge-client] timeout waiting for result")
+    return None
+
+
+def summarize_result(result: dict[str, Any]) -> int:
+    print("=" * 60)
+    print(f"STATUS: {str(result.get('status', 'unknown')).upper()}")
+    print(f"TESTS:  {'PASS' if result.get('tests_passed') else 'FAIL'}")
+    print(f"TASK:   {result.get('task', '')}")
+    print(f"COMMIT: {str(result.get('commit', ''))[:12]}")
+    errors = [str(x) for x in result.get("errors", [])]
+    warnings = [str(x) for x in result.get("warnings", [])]
+    suggestions = [str(x) for x in result.get("suggestions", [])]
+    if errors:
+        print("ERRORS:")
+        for item in errors:
+            print(f"- {item}")
+    if warnings:
+        print("WARNINGS:")
+        for item in warnings:
+            print(f"- {item}")
+    if suggestions:
+        print("SUGGESTIONS:")
+        for item in suggestions:
+            print(f"- {item}")
+    print(f"NEXT_ACTION: {result.get('next_action', 'unknown')}")
+    print("=" * 60)
+    return 0 if result.get("next_action") == "proceed" else 1
+
+
+def next_reja_task(tasks_file: Path) -> tuple[str, str] | None:
+    if not tasks_file.exists():
+        raise FileNotFoundError(f"tasks file not found: {tasks_file}")
+    for raw_line in tasks_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        match = REJA_ROW_RE.match(raw_line.strip())
+        if not match:
+            continue
+        status = match.group("status").strip()
+        if "?" in status or "Not Started" in status:
+            task_no = match.group("task_no").strip()
+            title = match.group("title").strip()
+            return task_no, title
+    return None
+
+
+def usage() -> int:
+    print("Usage:")
+    print("  python bridge/bridge_client.py push \"task description\"")
+    print("  python bridge/bridge_client.py wait <job_id>")
+    print("  python bridge/bridge_client.py next-task")
+    print("  python bridge/bridge_client.py bridge-push-next")
+    return 1
+
+
+def main() -> int:
+    cfg = load_config()
+    if len(sys.argv) < 2:
+        return usage()
+
+    cmd = sys.argv[1]
+    if cmd == "next-task":
+        nxt = next_reja_task(cfg.tasks_file)
+        if not nxt:
+            print("No not-started Phase 2 task found in docReja/Reja.md tracker")
+            return 1
+        task_no, title = nxt
+        print(json.dumps({"task_no": task_no, "title": title}, ensure_ascii=False))
+        return 0
+
+    if cmd == "push":
+        if len(sys.argv) < 3:
+            print("Task description required")
+            return 1
+        task = sys.argv[2]
+        job_id = push_and_trigger(task, cfg)
+        print(f"[bridge-client] pushed and triggered, job_id={job_id}")
+        result = wait_for_result(job_id, cfg)
+        if result is None:
+            return 1
+        return summarize_result(result)
+
+    if cmd == "wait":
+        if len(sys.argv) < 3:
+            print("job_id required")
+            return 1
+        result = wait_for_result(sys.argv[2], cfg)
+        if result is None:
+            return 1
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if cmd == "bridge-push-next":
+        nxt = next_reja_task(cfg.tasks_file)
+        if not nxt:
+            print("No not-started task found")
+            return 1
+        task_no, title = nxt
+        task = f"{task_no} {title}"
+        job_id = push_and_trigger(task, cfg)
+        print(f"[bridge-client] pushed and triggered next task, job_id={job_id}, task={task}")
+        result = wait_for_result(job_id, cfg)
+        if result is None:
+            return 1
+        return summarize_result(result)
+
+    return usage()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
