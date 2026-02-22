@@ -76,7 +76,7 @@ jobs:
           echo "ENTRYPOINT: $ENTRYPOINT"
           echo "WORKDIR: $WORKDIR"
 
-          if [[ "$CMD" != *"apps/web/node_modules/next/dist/bin/next start"* ]]; then
+          if [[ "$CMD" != "bun run --smol --cwd apps/web start" ]]; then
             echo "Unexpected image CMD: '$CMD'"
             exit 1
           fi
