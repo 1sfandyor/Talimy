@@ -81,7 +81,7 @@ jobs:
             exit 1
           fi
 
-          docker run --rm --entrypoint sh "$IMAGE_REF" -lc 'test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main'
+          docker run --rm --entrypoint sh "$IMAGE_REF" -lc 'test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main || test -f /app/apps/api/dist/apps/api/src/main.js'
 
   deploy-dokploy:
     runs-on: ubuntu-latest
