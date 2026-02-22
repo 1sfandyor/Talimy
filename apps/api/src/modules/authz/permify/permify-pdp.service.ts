@@ -1,7 +1,8 @@
-import * as permify from "@permify/permify-node"
 import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common"
 
 import { getPermifyConfig } from "@/config/permify.config"
+
+import { createPermifyClient, PERMIFY_CHECK_RESULT, type PermifyClient } from "./permify-sdk"
 
 type GenderEntity = "student" | "teacher"
 type GenderAction = "list" | "create" | "update"
@@ -20,7 +21,7 @@ type PermifyCheckInput = {
 export class PermifyPdpService {
   private readonly logger = new Logger(PermifyPdpService.name)
   private readonly cfg = getPermifyConfig()
-  private client: permify.grpc.PermifyClient | null = null
+  private client: PermifyClient | null = null
 
   async assertGenderAccess(input: PermifyCheckInput): Promise<void> {
     if (!this.cfg.enabled || !this.cfg.grpcEndpoint) {
@@ -61,11 +62,11 @@ export class PermifyPdpService {
         })
       )
 
-      if (response.can === permify.grpc.base.CheckResult.CHECK_RESULT_ALLOWED) {
+      if (response.can === PERMIFY_CHECK_RESULT.CHECK_RESULT_ALLOWED) {
         return
       }
 
-      if (response.can === permify.grpc.base.CheckResult.CHECK_RESULT_DENIED) {
+      if (response.can === PERMIFY_CHECK_RESULT.CHECK_RESULT_DENIED) {
         throw new ForbiddenException("Authorization policy denied")
       }
 
@@ -80,7 +81,7 @@ export class PermifyPdpService {
     }
   }
 
-  private getClient(): permify.grpc.PermifyClient {
+  private getClient(): PermifyClient {
     if (this.client) {
       return this.client
     }
@@ -89,7 +90,7 @@ export class PermifyPdpService {
       this.failClosed("Permify gRPC endpoint is missing")
     }
 
-    this.client = permify.grpc.newClient({
+    this.client = createPermifyClient({
       endpoint: this.cfg.grpcEndpoint,
       cert: null,
       pk: null,

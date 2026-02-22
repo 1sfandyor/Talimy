@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common"
 
-import { AuthService } from "@/modules/auth/auth.service"
+import { AuthService } from "../../modules/auth/auth.service"
 
 import type { CurrentUser } from "../decorators/current-user.decorator"
 

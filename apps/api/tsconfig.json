@@ -9,10 +9,12 @@
       "@/*": ["src/*"],
       "@talimy/shared": ["../../packages/shared/src/index.ts"],
       "@talimy/shared/*": ["../../packages/shared/src/*"],
-      "@talimy/database": ["../../packages/database/src/index.ts"],
-      "@talimy/database/*": ["../../packages/database/src/*"],
+      "@talimy/database": ["../../packages/database"],
+      "@talimy/database/*": ["../../packages/database/*"],
       "@talimy/trpc": ["../../packages/trpc/src/index.ts"],
-      "@talimy/trpc/*": ["../../packages/trpc/src/*"]
+      "@talimy/trpc/*": ["../../packages/trpc/src/*"],
+      "dotenv": ["../../packages/database/node_modules/dotenv/lib/main.d.ts"],
+      "pg": ["../../packages/database/node_modules/@types/pg/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],
