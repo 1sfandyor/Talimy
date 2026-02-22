@@ -1,5 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "outDir": "./dist"
+  },
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }
