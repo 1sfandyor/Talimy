@@ -717,6 +717,7 @@ bun run test:e2e               # Playwright E2E tests
 9. **Post-install verification is agent-owned**: After setup/install steps (e.g., shadcn init/add), the agent MUST verify generated config and paths itself before giving next steps.
 10. **Mandatory quick checks after UI setup**: verify `components.json` (`tailwind.css` path), `src/app/globals.css` presence, and TS path aliases (`@/*`, `@talimy/ui/*`) and then report actionable next tasks.
 11. **Diff hygiene is mandatory**: when editing a file, change only target lines; unchanged neighboring lines (headers/keys/values) MUST NOT be deleted and re-added. After edits, verify with `git diff --word-diff -- <file>` and ensure only intended tokens changed.
+12. **Best-practice first (strict)**: Do NOT choose temporary / pragmatic / quick-fix workarounds as the primary solution. Default to the cleanest, most correct, long-term, best-practice implementation even if it takes longer.
     -11. **Env-path precision is mandatory**: when asking the user to add/update environment variables, the agent MUST provide a single exact file path per variable based on scope (e.g., `apps/api/.env` or `apps/web/.env.local`) and MUST NOT use ambiguous alternatives like "A yoki B".
 
 ### After Writing Code
@@ -738,6 +739,7 @@ bun run test:e2e               # Playwright E2E tests
 - Do NOT query database without tenantId filter.
 - Do NOT store secrets in code. Use environment variables.
 - Do NOT reformat or rewrite unrelated code when making targeted changes.
+- Do NOT ship temporary / pragmatic / quick-fix workarounds as final solutions. Use clean, correct, best-practice implementations by default.
 
 ---
 
