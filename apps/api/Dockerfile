@@ -56,8 +56,14 @@ COPY --from=deps-prod /app/apps/api/package.json ./apps/api/package.json
 COPY --from=deps-prod /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /app/.docker-artifacts/api-dist ./apps/api/dist
 COPY --from=deps-prod /app/packages ./packages
+RUN set -eux; \
+  mkdir -p /app/apps/api/dist/packages/database /app/apps/api/dist/packages/shared; \
+  if [ -d /app/packages/database/node_modules ]; then cp -R /app/packages/database/node_modules /app/apps/api/dist/packages/database/node_modules; fi; \
+  if [ -d /app/packages/shared/node_modules ]; then cp -R /app/packages/shared/node_modules /app/apps/api/dist/packages/shared/node_modules; fi
 RUN test -d /app/apps/api/node_modules/@nestjs/common \
-  && (test -d /app/packages/shared/node_modules/zod || test -d /app/node_modules/zod || test -d /app/apps/api/node_modules/zod)
+  && (test -d /app/apps/api/dist/packages/database/node_modules/dotenv || test -d /app/apps/api/node_modules/dotenv || test -d /app/node_modules/dotenv) \
+  && (test -d /app/apps/api/dist/packages/database/node_modules/pg || test -d /app/apps/api/node_modules/pg || test -d /app/node_modules/pg) \
+  && (test -d /app/apps/api/dist/packages/shared/node_modules/zod || test -d /app/packages/shared/node_modules/zod || test -d /app/node_modules/zod || test -d /app/apps/api/node_modules/zod)
 
 EXPOSE 4000
 CMD ["bun", "run", "--cwd", "apps/api", "start:prod"]
