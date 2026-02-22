@@ -1,6 +1,7 @@
 export * from "./auth.schema"
 export * from "./class.schema"
 export * from "./attendance.schema"
+export * from "./grade.schema"
 export * from "./teacher.schema"
 export * from "./tenant.schema"
 export * from "./student.schema"
