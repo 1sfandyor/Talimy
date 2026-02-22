@@ -18,14 +18,17 @@ RUN (test -f /app/apps/api/dist/main.js || test -f /app/apps/api/dist/main || te
 FROM oven/bun:1.3.9 AS runner
 WORKDIR /app
 
+COPY package.json bun.lock turbo.json tsconfig.base.json ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages ./packages
+COPY tooling ./tooling
+
+RUN bun install --frozen-lockfile --production
+
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+
 ENV NODE_ENV=production
 ENV PORT=4000
-
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
-COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/packages ./packages
 
 EXPOSE 4000
 
