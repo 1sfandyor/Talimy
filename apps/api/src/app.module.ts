@@ -9,6 +9,7 @@ import { RolesGuard } from "./common/guards/roles.guard"
 import { TenantGuard } from "./common/guards/tenant.guard"
 import { LoggerMiddleware } from "./common/middleware/logger.middleware"
 import { TenantMiddleware } from "./common/middleware/tenant.middleware"
+import { PermifyPdpService } from "./modules/authz/permify/permify-pdp.service"
 import { AuthModule } from "./modules/auth/auth.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
 import { ClassesModule } from "./modules/classes/classes.module"
@@ -40,6 +41,7 @@ import { UsersModule } from "./modules/users/users.module"
       provide: APP_FILTER,
       useClass: SentryGlobalFilter,
     },
+    PermifyPdpService,
   ],
 })
 export class AppModule implements NestModule {

@@ -28,6 +28,7 @@ import { GenderGuard } from "@/common/guards/gender.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
 import { TenantGuard } from "@/common/guards/tenant.guard"
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
+import { PermifyPdpService } from "@/modules/authz/permify/permify-pdp.service"
 
 import { CreateStudentDto } from "./dto/create-student.dto"
 import { ListStudentsQueryDto } from "./dto/list-students-query.dto"
@@ -38,11 +39,27 @@ import { StudentsService } from "./students.service"
 @UseGuards(AuthGuard, RolesGuard, TenantGuard, GenderGuard)
 @Roles("platform_admin", "school_admin", "teacher")
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) {}
+  constructor(
+    private readonly studentsService: StudentsService,
+    private readonly permifyPdpService: PermifyPdpService
+  ) {}
 
   @Get()
   @UsePipes(new ZodValidationPipe(listStudentsQuerySchema))
-  list(@CurrentUser() currentUser: CurrentUserType | null, @Query() query: ListStudentsQueryDto) {
+  async list(
+    @CurrentUser() currentUser: CurrentUserType | null,
+    @Query() query: ListStudentsQueryDto
+  ) {
+    if (currentUser && currentUser.roles?.includes("school_admin")) {
+      await this.permifyPdpService.assertGenderAccess({
+        tenantId: query.tenantId,
+        userId: currentUser.id,
+        roles: currentUser.roles ?? [],
+        userGenderScope: currentUser.genderScope ?? "all",
+        entity: "student",
+        action: "list",
+      })
+    }
     if (currentUser?.genderScope && currentUser.genderScope !== "all") {
       query.gender = currentUser.genderScope
     }
@@ -81,7 +98,21 @@ export class StudentsController {
 
   @Post()
   @UsePipes(new ZodValidationPipe(createStudentSchema))
-  create(@CurrentUser() currentUser: CurrentUserType | null, @Body() payload: CreateStudentDto) {
+  async create(
+    @CurrentUser() currentUser: CurrentUserType | null,
+    @Body() payload: CreateStudentDto
+  ) {
+    if (currentUser && currentUser.roles?.includes("school_admin")) {
+      await this.permifyPdpService.assertGenderAccess({
+        tenantId: payload.tenantId,
+        userId: currentUser.id,
+        roles: currentUser.roles ?? [],
+        userGenderScope: currentUser.genderScope ?? "all",
+        entity: "student",
+        action: "create",
+        targetGender: payload.gender,
+      })
+    }
     if (currentUser?.genderScope && currentUser.genderScope !== "all") {
       if (payload.gender !== currentUser.genderScope) {
         throw new ForbiddenException("Gender scope mismatch")
@@ -92,12 +123,23 @@ export class StudentsController {
 
   @Patch(":id")
   @UsePipes(new ZodValidationPipe(updateStudentSchema))
-  update(
+  async update(
     @CurrentUser() currentUser: CurrentUserType | null,
     @Query("tenantId") tenantId: string,
     @Param("id") id: string,
     @Body() payload: UpdateStudentDto
   ) {
+    if (currentUser && currentUser.roles?.includes("school_admin")) {
+      await this.permifyPdpService.assertGenderAccess({
+        tenantId,
+        userId: currentUser.id,
+        roles: currentUser.roles ?? [],
+        userGenderScope: currentUser.genderScope ?? "all",
+        entity: "student",
+        action: "update",
+        targetGender: payload.gender,
+      })
+    }
     if (currentUser?.genderScope && currentUser.genderScope !== "all" && payload.gender) {
       if (payload.gender !== currentUser.genderScope) {
         throw new ForbiddenException("Gender scope mismatch")

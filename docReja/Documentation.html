@@ -633,6 +633,12 @@ color:#1B8A4C'>1.4 Gender Ajratish (RBAC via Permify)</span></b></p>
 color:black'>Permify Policy Engine orqali har bir maktabda gender-based access
 control amalga oshiriladi.</span></p>
 
+<p class=MsoNormal style='margin-bottom:4.0pt'><span style='font-size:10.0pt;
+color:black'>Implementation note (FAZA 2 / Tasks 2.6.3 &amp; 2.7.3): real
+Permify SDK/client orqali external PDP check ishlatiladi; faqat local query
+filter bilan "Permify integration" deb hisoblanmaydi. PDP unavailable holatda
+fallback fail-closed bo'lishi va runbookda qayd etilishi shart.</span></p>
+
 <table class=MsoNormalTable border=1 cellspacing=0 cellpadding=0 width=624
  style='width:6.5in;margin-left:-.35pt;border-collapse:collapse;border:none'>
  <thead>
@@ -10537,6 +10543,10 @@ color:#1B8A4C'>Operational Note (2026-02-21): Backend Service Structure</span></
 <p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
 2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 </span><span style='font-size:10.0pt;color:black'>Har bir subtaskdan oldin `docReja/Reja.md` va `docReja/Documentation.html` qayta o'qilib, acceptance mezonlari bo'yicha aniq qadamlar ro'yxati tuziladi.</span></p>
+
+<p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
+2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</span><span style='font-size:10.0pt;color:black'>Permify PDP integratsiyasi uchun envlar backendga tegishli bo'lib, aniq joylashuv fayli: `apps/api/.env`.</span></p>
 
 <p class=MsoNormal style='margin-bottom:6.0pt'>&nbsp;</p>
 
