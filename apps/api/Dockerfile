@@ -1,13 +1,12 @@
 FROM oven/bun:1.3.9 AS base
 WORKDIR /app
-ENV NODE_ENV=development
 
 COPY package.json bun.lock turbo.json tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
 COPY tooling ./tooling
 
-RUN bun install --frozen-lockfile
+RUN NODE_ENV=development bun install --frozen-lockfile
 
 FROM base AS build
 ENV NODE_ENV=production
