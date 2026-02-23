@@ -326,6 +326,39 @@ def _analyze_docker_service_ps_checks(check_results: list[dict[str, Any]]) -> li
     return warnings
 
 
+def _analyze_docker_service_logs_checks(check_results: list[dict[str, Any]]) -> list[str]:
+    warnings: list[str] = []
+    for item in check_results:
+        cmd = str(item.get("command", "")).lower()
+        if "docker service logs " not in cmd:
+            continue
+
+        text = str(item.get("stdout", "") or "")
+        text_l = text.lower()
+
+        saw_started = "nest application successfully started" in text_l
+        saw_polite_sigterm = (
+            "signal sigterm (polite quit request)" in text_l
+            or "terminated by signal sigterm (polite quit request)" in text_l
+        )
+        saw_fatal = any(
+            token in text_l
+            for token in (
+                "unhandled exception",
+                "error: listen eaddrinuse",
+                "error: connect econnrefused",
+                "fatal error",
+                "panic:",
+            )
+        )
+
+        if saw_started and saw_polite_sigterm and not saw_fatal:
+            warnings.append(
+                "docker service logs snapshotda `Nest application successfully started` dan keyin `SIGTERM (Polite quit request)` ko'rindi; rollout/redeploy paytida bu odatda normal (eski task graceful shutdown)."
+            )
+    return warnings
+
+
 TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
 SERVICE_TOKEN_RE = re.compile(r"\{\{service:(?P<alias>[a-zA-Z0-9_-]+)\}\}")
 
@@ -785,6 +818,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
 
     warnings: list[str] = []
     warnings.extend(_analyze_docker_service_ps_checks(check_results))
+    warnings.extend(_analyze_docker_service_logs_checks(check_results))
     suggestions: list[str] = []
     if codex_review:
         warnings.extend([str(x) for x in codex_review.get("warnings", [])])
