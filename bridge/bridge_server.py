@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "bridge_config.json"
+SERVER_CODEX_POLICY_PATH = BASE_DIR / "server_codex_policy.md"
 STATE_DIR = BASE_DIR / ".bridge-state"
 RESULTS_DIR = STATE_DIR / "results"
 EVENTS_DIR = STATE_DIR / "events"
@@ -121,6 +122,11 @@ class BridgeConfig:
             elif isinstance(patterns, str):
                 parsed[str(alias)] = [patterns]
         return parsed
+
+    @property
+    def server_codex_policy_path(self) -> Path:
+        raw = str(self.raw.get("server_codex_policy_path", "")).strip()
+        return Path(raw) if raw else SERVER_CODEX_POLICY_PATH
 
 
 class JsonStore:
@@ -405,6 +411,20 @@ def run_server_codex_review(
         "Shuning uchun bridge result faylida status=running/stage=starting ko'rinsa bu normal; buni xato deb baholama. "
         "Asosiy signal sifatida deterministic checks natijalari va runtime event/log xulosalarini bahola."
     )
+    policy_text = ""
+    policy_fp = ""
+    try:
+        policy_path = config.server_codex_policy_path
+        if policy_path.exists():
+            policy_text = policy_path.read_text(encoding="utf-8").strip()
+            if policy_text:
+                policy_fp = hashlib.sha256(policy_text.encode("utf-8")).hexdigest()[:12]
+    except Exception:
+        policy_text = ""
+        policy_fp = ""
+    policy_block = ""
+    if policy_text:
+        policy_block = f"\n\nServer Codex review policy (source of truth for this review):\n{policy_text}\n"
 
     prompt = f"""
 Taskni tekshir: {trigger.get('task', '')}
@@ -412,6 +432,7 @@ Commit: {trigger.get('commit', '')}
 {mode_note}
 {runtime_review_note}
 {session_context_block}
+{policy_block}
 
 Qilish kerak:
 1. Mavjud bridge natijalari (checks/logs/events) asosida xulosani tekshir
@@ -429,7 +450,8 @@ Qilish kerak:
 """.strip()
 
     try:
-        server_log("codex", f"review start job={job_id} mode={mode}")
+        policy_meta = f" policy_fp={policy_fp}" if policy_fp else ""
+        server_log("codex", f"review start job={job_id} mode={mode}{policy_meta}")
         result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout, job_id=job_id)
     except Exception as exc:  # pragma: no cover - runtime safeguard
         return {
@@ -460,6 +482,8 @@ Qilish kerak:
         }
 
     parsed["codex_returncode"] = result.returncode
+    if policy_fp:
+        parsed["policy_fp"] = policy_fp
     server_log("codex", f"review parsed job={job_id} status={parsed.get('status', 'unknown')}")
     return parsed
 
