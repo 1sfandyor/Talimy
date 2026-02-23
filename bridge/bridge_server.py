@@ -47,7 +47,20 @@ class BridgeConfig:
 
     @property
     def server_repo_path(self) -> Path:
-        return Path(str(self.raw["server_repo_path"]))
+        return Path(str(self.raw.get("server_repo_path", BASE_DIR.parent)))
+
+    @property
+    def server_mode(self) -> str:
+        return str(self.raw.get("server_mode", "repo_checks")).strip() or "repo_checks"
+
+    @property
+    def server_workdir(self) -> Path:
+        raw = str(self.raw.get("server_workdir", "")).strip()
+        if raw:
+            return Path(raw)
+        if self.server_mode == "runtime_inspector":
+            return BASE_DIR
+        return self.server_repo_path
 
     @property
     def server_codex(self) -> dict[str, Any]:
@@ -176,7 +189,9 @@ def detect_check_set(
     return "default", checks.get("default", [])
 
 
-def run_server_codex_review(trigger: dict[str, Any], config: BridgeConfig, repo_path: Path) -> dict[str, Any] | None:
+def run_server_codex_review(
+    trigger: dict[str, Any], config: BridgeConfig, workdir: Path, *, mode: str
+) -> dict[str, Any] | None:
     codex_cfg = config.server_codex
     if not codex_cfg.get("enabled", False):
         return None
@@ -193,15 +208,23 @@ def run_server_codex_review(trigger: dict[str, Any], config: BridgeConfig, repo_
             f"{session_excerpt}\n"
         )
 
+    mode_note = (
+        "Server roli: runtime inspector (Dokploy/docker service logs va runtime signal tahlili). "
+        "Git pull/lint/typecheck qilma."
+        if mode == "runtime_inspector"
+        else "Server roli: repo checks + optional review."
+    )
+
     prompt = f"""
 Taskni tekshir: {trigger.get('task', '')}
 Commit: {trigger.get('commit', '')}
+{mode_note}
 {session_context_block}
 
 Qilish kerak:
-1. Oxirgi commit diffni ko'r: git diff HEAD~1 HEAD
-2. Kodni review qil (bug, regressiya, xavfsizlik risk)
-3. Mavjud test/lint natijalari asosida qisqa xulosa ber
+1. Mavjud bridge natijalari (checks/logs/events) asosida xulosani tekshir
+2. Agar runtime-inspector bo'lsa docker/service log xatolarini tahlil qil
+3. Qisqa xulosa ber
 4. FAQAT JSON chiqar:
 {{
   "status": "success" | "failure",
@@ -216,7 +239,7 @@ Qilish kerak:
     try:
         result = subprocess.run(
             [codex_bin, "--no-interactive", "-q", prompt],
-            cwd=str(repo_path),
+            cwd=str(workdir),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -255,7 +278,8 @@ Qilish kerak:
 
 def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     config = state.config
-    repo_path = config.server_repo_path
+    workdir = config.server_workdir
+    mode = config.server_mode
     job_id = str(trigger.get("job_id") or "")
     task = str(trigger.get("task") or "code update")
 
@@ -277,38 +301,40 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         },
     )
 
-    git_steps = [
-        run_command("git fetch origin", repo_path),
-        run_command(f"git checkout {shlex.quote(config.branch)}", repo_path),
-        run_command(f"git pull --ff-only origin {shlex.quote(config.branch)}", repo_path),
-    ]
+    git_steps: list[dict[str, Any]] = []
+    if mode == "repo_checks":
+        git_steps = [
+            run_command("git fetch origin", workdir),
+            run_command(f"git checkout {shlex.quote(config.branch)}", workdir),
+            run_command(f"git pull --ff-only origin {shlex.quote(config.branch)}", workdir),
+        ]
 
-    for step in git_steps:
-        if step["returncode"] != 0:
-            state.jobs.write(
-                job_id,
-                {
-                    "status": "failure",
-                    "tests_passed": False,
-                    "errors": [f"git step failed: {step['command']}", step["stderr"].strip()],
-                    "warnings": [],
-                    "suggestions": ["Server repo path/branch and git auth ni tekshiring."],
-                    "next_action": "fix_required",
-                    "task": task,
-                    "commit": trigger.get("commit"),
-                    "job_id": job_id,
-                    "stage": "git",
-                    "git": git_steps,
-                    "session_context_meta": trigger.get("session_context", {}),
-                },
-            )
-            return
+        for step in git_steps:
+            if step["returncode"] != 0:
+                state.jobs.write(
+                    job_id,
+                    {
+                        "status": "failure",
+                        "tests_passed": False,
+                        "errors": [f"git step failed: {step['command']}", step["stderr"].strip()],
+                        "warnings": [],
+                        "suggestions": ["Server repo path/branch and git auth ni tekshiring."],
+                        "next_action": "fix_required",
+                        "task": task,
+                        "commit": trigger.get("commit"),
+                        "job_id": job_id,
+                        "stage": "git",
+                        "git": git_steps,
+                        "session_context_meta": trigger.get("session_context", {}),
+                    },
+                )
+                return
 
     check_set_name, checks = detect_check_set(task, config.server_checks, config.task_check_mapping)
     check_results: list[dict[str, Any]] = []
     check_errors: list[str] = []
     for cmd in checks:
-        res = run_command(cmd, repo_path, timeout=1200)
+        res = run_command(cmd, workdir, timeout=1200)
         check_results.append(res)
         if res["returncode"] != 0:
             check_errors.append(f"{cmd} failed")
@@ -318,7 +344,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
 
     tests_passed = len(check_errors) == 0
 
-    codex_review = run_server_codex_review(trigger, config, repo_path)
+    codex_review = run_server_codex_review(trigger, config, workdir, mode=mode)
 
     warnings: list[str] = []
     suggestions: list[str] = []
@@ -340,6 +366,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         "commit": trigger.get("commit"),
         "job_id": job_id,
         "stage": "completed",
+        "server_mode": mode,
         "git": git_steps,
         "checks": check_results,
         "check_set": check_set_name,
@@ -549,7 +576,11 @@ def main() -> int:
     server = ThreadingHTTPServer(("0.0.0.0", config.bridge_port), BoundHandler)
 
     print(f"[bridge-server] listening on 0.0.0.0:{config.bridge_port}")
-    print(f"[bridge-server] repo: {config.server_repo_path}")
+    print(f"[bridge-server] mode: {config.server_mode}")
+    if config.server_mode == "repo_checks":
+        print(f"[bridge-server] repo: {config.server_repo_path}")
+    else:
+        print(f"[bridge-server] workdir: {config.server_workdir}")
     print("[bridge-server] checks: configured deterministic commands + optional codex review")
     try:
         server.serve_forever()

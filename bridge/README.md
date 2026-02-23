@@ -4,8 +4,9 @@ Bu bridge Talimy workflow uchun moslashtirilgan:
 
 - Laptop Codex `git push` qiladi
 - Bridge server trigger oladi
-- Server repo `git pull --ff-only` qiladi
-- Deterministic checklar (`bun run typecheck/lint`) ishga tushadi
+- Server bridge trigger oladi va tanlangan rejimda tekshiradi:
+  - `repo_checks`: `git pull --ff-only` + deterministic checks
+  - `runtime_inspector`: Dokploy/docker runtime log tekshiruvi
 - (Ixtiyoriy) server Codex review JSON qaytaradi
 - Natija laptopga JSON ko'rinishida qaytadi
 
@@ -27,7 +28,9 @@ To'ldiring:
 
 - `server_host` (WireGuard IP tavsiya: `10.66.66.x`)
 - `shared_secret`
-- `server_repo_path`
+- `server_mode` (`repo_checks` yoki `runtime_inspector`)
+- `server_repo_path` (`repo_checks` uchun)
+- `server_workdir` (`runtime_inspector` uchun ixtiyoriy)
 - `laptop_repo_path`
 
 ## 2) Serverda ishga tushirish
@@ -122,10 +125,10 @@ Server `/events?job_id=...` endpoint event timeline qaytaradi:
 
 1. `git push`
 2. GitHub Actions CI wait (`github_ci` config bo'yicha)
-3. CI success bo'lsa bridge server trigger
-4. (Ixtiyoriy) Dokploy deploy hook trigger
-5. (Ixtiyoriy) Runtime health checks (`api/web/platform`)
-6. Server deterministic checks + optional server Codex review
+3. (Ixtiyoriy) Dokploy deploy hook trigger
+4. (Ixtiyoriy) Runtime health checks (`api/web/platform`)
+5. Bridge server trigger
+6. Server checks (repo_checks yoki runtime_inspector) + optional server Codex review
 7. Telegram notify (yoqilgan bo'lsa)
 
 CI polling paytida client har workflow status o'zgarishini (`queued/in_progress/completed`) serverga event qilib yuboradi va server `ack` qaytaradi:
@@ -147,6 +150,25 @@ CI polling paytida client har workflow status o'zgarishini (`queued/in_progress/
 - `16.x`, `17.x` -> `default` (custom checklarni qo'shasiz)
 
 CI/Dokploy verification alohida qoladi; bridge local/server smoke checks uchun ishlatiladi.
+
+### `runtime_inspector` rejim (sizning Talimy server workflow)
+
+Sizning holatda serverda source repo bo'lmasligi mumkin (GHCR image + Dokploy deploy). Shu paytda:
+
+- `server_mode = "runtime_inspector"`
+- `server_checks` ichiga `docker service logs`, `docker service ps`, `curl` health commandlarini yozasiz
+
+Misol (`server_checks.api_runtime`):
+
+- `docker service ps talimy-api-7bawha --no-trunc`
+- `docker service logs --tail=200 talimy-api-7bawha`
+- `curl -fsS https://api.talimy.space/api/health`
+
+So'ng `task_check_mapping`:
+
+- `2.x` -> `api_runtime`
+
+Shunda laptop Codex kod/CI bilan ishlaydi, server Codex esa faqat deploy/runtime xatolarni (Bad Gateway, restart loop, DI errors) tahlil qiladi.
 
 ## 6) Qo'shimcha config (GitHub CI + Telegram)
 
