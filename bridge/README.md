@@ -5,7 +5,6 @@ Bu bridge Talimy workflow uchun moslashtirilgan:
 - Laptop Codex `git push` qiladi
 - Bridge server trigger oladi
 - Server bridge trigger oladi va tanlangan rejimda tekshiradi:
-  - `repo_checks`: `git pull --ff-only` + deterministic checks
   - `runtime_inspector`: Dokploy/docker runtime log tekshiruvi
 - (Ixtiyoriy) server Codex review JSON qaytaradi
 - Natija laptopga JSON ko'rinishida qaytadi
@@ -28,8 +27,7 @@ To'ldiring:
 
 - `server_host` (WireGuard IP tavsiya: `10.66.66.x`)
 - `shared_secret`
-- `server_mode` (`repo_checks` yoki `runtime_inspector`)
-- `server_repo_path` (`repo_checks` uchun)
+- `server_mode` (`runtime_inspector`)
 - `server_workdir` (`runtime_inspector` uchun ixtiyoriy)
 - `laptop_repo_path`
 
@@ -128,7 +126,7 @@ Server `/events?job_id=...` endpoint event timeline qaytaradi:
 3. (Ixtiyoriy) Dokploy deploy hook trigger
 4. (Ixtiyoriy) Runtime health checks (`api/web/platform`)
 5. Bridge server trigger
-6. Server checks (repo_checks yoki runtime_inspector) + optional server Codex review
+6. Server checks (runtime_inspector) + optional server Codex review
 7. Telegram notify (yoqilgan bo'lsa)
 
 CI polling paytida client har workflow status o'zgarishini (`queued/in_progress/completed`) serverga event qilib yuboradi va server `ack` qaytaradi:
@@ -138,24 +136,21 @@ CI polling paytida client har workflow status o'zgarishini (`queued/in_progress/
 
 ## 5) Tavsiya etiladigan server check mapping
 
-`bridge_config.json` ichida `server_checks`ni Talimy taskiga moslab saqlang:
-
-- `api`: `bun run typecheck --filter=api`, `bun run lint --filter=api`
-- `web`: `bun run typecheck --filter=web`, `bun run lint --filter=web`
+`bridge_config.json` ichida `server_checks`ni Talimy runtime taskiga moslab saqlang (`docker service ps/logs`, `curl` health).
 
 `task_check_mapping` misol:
 
-- `2.x` -> `api` (Phase 2 backend)
-- `3.x`..`12.x` -> `web` (frontend/UI/panels)
-- `16.x`, `17.x` -> `default` (custom checklarni qo'shasiz)
+- `2.x` -> `api_runtime`
+- `3.x`..`12.x` -> `web_runtime`
+- `17.x` -> `deploy_runtime`
 
-CI/Dokploy verification alohida qoladi; bridge local/server smoke checks uchun ishlatiladi.
+CI/Dokploy verification alohida qoladi; server bridge runtime log/health inspector bo'lib ishlaydi.
 
 ### `runtime_inspector` rejim (sizning Talimy server workflow)
 
 Sizning holatda serverda source repo bo'lmasligi mumkin (GHCR image + Dokploy deploy). Shu paytda:
 
-- `server_mode = "runtime_inspector"`
+- `server_mode = "runtime_inspector"` (tavsiya etilgan default)
 - `server_checks` ichiga `docker service logs`, `docker service ps`, `curl` health commandlarini yozasiz
 
 Misol (`server_checks.api_runtime`):
