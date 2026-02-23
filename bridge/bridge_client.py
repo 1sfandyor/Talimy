@@ -240,16 +240,36 @@ def _extract_text_from_message_content(content: Any) -> str:
     return "\n".join(parts).strip()
 
 
+def resolve_session_jsonl_path(sc: dict[str, Any]) -> Path | None:
+    raw_path = str(sc.get("path", "")).strip()
+    if raw_path:
+        path = Path(os.path.expandvars(os.path.expanduser(raw_path)))
+        return path
+
+    session_id = str(sc.get("session_id", "")).strip().lower()
+    if not session_id:
+        return None
+
+    sessions_root = Path(os.path.expandvars(os.path.expanduser(str(sc.get("sessions_root", "~/.codex/sessions")))))
+    if not sessions_root.exists():
+        return sessions_root / f"*{session_id}*.jsonl"
+
+    matches = sorted(
+        [p for p in sessions_root.rglob("*.jsonl") if session_id in p.name.lower()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return matches[0] if matches else sessions_root / f"*{session_id}*.jsonl"
+
+
 def build_session_context_excerpt(cfg: Config) -> dict[str, Any] | None:
     sc = cfg.session_context
     if not bool(sc.get("enabled", False)):
         return None
 
-    raw_path = str(sc.get("path", "")).strip()
-    if not raw_path:
+    path = resolve_session_jsonl_path(sc)
+    if path is None:
         return None
-
-    path = Path(os.path.expandvars(os.path.expanduser(raw_path)))
     if not path.exists():
         return {
             "enabled": True,

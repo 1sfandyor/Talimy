@@ -164,6 +164,8 @@ Maqsad: laptopdagi Codex session tarixidan qisqa excerpt olib, server Codex revi
 
 - `session_context.enabled = true`
 - `session_context.path = "C:/Users/isfan/.codex/sessions/.../rollout-....jsonl"`
+- yoki `session_context.session_id = "019c86a6-24f6-76f1-b071-373c3d75b356"` (auto-lookup)
+- ixtiyoriy `session_context.sessions_root` (`~/.codex/sessions` default)
 - `session_context.max_messages`
 - `session_context.max_chars`
 
