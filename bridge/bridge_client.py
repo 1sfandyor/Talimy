@@ -407,6 +407,47 @@ def get_bridge_events(job_id: str, cfg: Config) -> dict[str, Any]:
     return resp
 
 
+def watch_bridge_events(job_id: str, cfg: Config, timeout_seconds: int = 1800) -> int:
+    started = time.time()
+    seen = 0
+    dots = 0
+    while time.time() - started < timeout_seconds:
+        try:
+            payload = get_bridge_events(job_id, cfg)
+        except Exception as exc:
+            print(f"\n[bridge-client] watch-events error: {exc}")
+            time.sleep(cfg.poll_interval_seconds)
+            continue
+
+        events = list(payload.get("events", []))
+        if len(events) > seen:
+            for event in events[seen:]:
+                ts = event.get("timestamp", "")
+                event_type = event.get("event_type", "")
+                workflow = event.get("workflow", "")
+                status = event.get("status", "")
+                conclusion = event.get("conclusion", "")
+                message = event.get("message", "")
+                parts = [str(ts), str(event_type)]
+                if workflow:
+                    parts.append(str(workflow))
+                if status:
+                    parts.append(f"status={status}")
+                if conclusion:
+                    parts.append(f"conclusion={conclusion}")
+                if message:
+                    parts.append(f"- {message}")
+                print("\n" + " | ".join(parts))
+            seen = len(events)
+        else:
+            dots = (dots + 1) % 4
+            print(f"\r[bridge-client] watching events{'.' * dots}   ", end="", flush=True)
+        time.sleep(cfg.poll_interval_seconds)
+
+    print("\n[bridge-client] watch-events timeout")
+    return 0
+
+
 def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
     tg = cfg.telegram
     if not bool(tg.get("enabled", False)):
@@ -555,6 +596,7 @@ def usage() -> int:
     print("  python bridge/bridge_client.py push \"task description\"")
     print("  python bridge/bridge_client.py wait <job_id>")
     print("  python bridge/bridge_client.py events <job_id>")
+    print("  python bridge/bridge_client.py watch-events <job_id>")
     print("  python bridge/bridge_client.py next-task")
     print("  python bridge/bridge_client.py bridge-push-next")
     return 1
@@ -604,6 +646,12 @@ def main() -> int:
         events = get_bridge_events(sys.argv[2], cfg)
         print(json.dumps(events, indent=2))
         return 0
+
+    if cmd == "watch-events":
+        if len(sys.argv) < 3:
+            print("job_id required")
+            return 1
+        return watch_bridge_events(sys.argv[2], cfg)
 
     if cmd == "bridge-push-next":
         nxt = next_reja_task(cfg.tasks_file)

@@ -74,6 +74,12 @@ CI/bridge event tarixini ko'rish (`job_id` bo'yicha):
 python bridge/bridge_client.py events <job_id>
 ```
 
+CI/bridge eventlarni realtime kuzatish (tail mode):
+
+```bash
+python bridge/bridge_client.py watch-events <job_id>
+```
+
 ## 4) Natija formati
 
 Server `/result?job_id=...` endpoint JSON qaytaradi:
