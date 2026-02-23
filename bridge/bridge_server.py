@@ -349,10 +349,12 @@ Qilish kerak:
     return parsed
 
 
-def run_server_codex_hello(config: BridgeConfig, workdir: Path, *, side: str) -> tuple[str, str]:
+def run_server_codex_hello(
+    config: BridgeConfig, workdir: Path, *, side: str
+) -> tuple[str, str, dict[str, Any] | None]:
     codex_cfg = config.server_codex
     if not codex_cfg.get("enabled", False):
-        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+        return "", "bridge_server_disabled", {"message": "server_codex.enabled=false"}
 
     codex_bin = str(codex_cfg.get("binary", "codex"))
     timeout = int(codex_cfg.get("hello_timeout_seconds", 20))
@@ -370,18 +372,23 @@ def run_server_codex_hello(config: BridgeConfig, workdir: Path, *, side: str) ->
             text=True,
             timeout=timeout,
         )
-    except Exception:
-        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+    except Exception as exc:
+        return "", "server_codex_error", {"message": f"codex invoke failed: {exc}"}
 
     reply = (result.stdout or "").strip()
     if result.returncode != 0 or not reply:
-        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+        return "", "server_codex_error", {
+            "message": "codex hello returned empty/non-zero",
+            "returncode": result.returncode,
+            "stdout": (result.stdout or "")[:500],
+            "stderr": (result.stderr or "")[:500],
+        }
 
     # Keep hello deterministic and one-line even if codex returns multi-line text.
     first_line = next((line.strip() for line in reply.splitlines() if line.strip()), "")
     if not first_line:
-        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
-    return first_line, "server_codex"
+        return "", "server_codex_error", {"message": "codex hello output had no non-empty line"}
+    return first_line, "server_codex", None
 
 
 def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
@@ -535,8 +542,24 @@ class Handler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             side = (params.get("side") or ["unknown"])[0]
             self._console(f"hello from {side}")
-            reply, reply_source = run_server_codex_hello(self.state.config, self.state.config.server_workdir, side=side)
-            self._console(f"hello reply source={reply_source} reply={reply}")
+            reply, reply_source, hello_error = run_server_codex_hello(
+                self.state.config, self.state.config.server_workdir, side=side
+            )
+            self._console(f"hello reply source={reply_source} reply={reply or '-'}")
+            if hello_error:
+                self._console(f"hello codex error={hello_error}")
+                self._json(
+                    503,
+                    {
+                        "status": "error",
+                        "message": f"bridge-server eshitayapti ({side})",
+                        "reply": None,
+                        "reply_source": reply_source,
+                        "error": hello_error,
+                        "server_time": int(time.time()),
+                    },
+                )
+                return
             self._json(
                 200,
                 {
