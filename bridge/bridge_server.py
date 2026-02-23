@@ -28,6 +28,13 @@ STATE_DIR = BASE_DIR / ".bridge-state"
 RESULTS_DIR = STATE_DIR / "results"
 EVENTS_DIR = STATE_DIR / "events"
 ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+ANSI_RESET = "\x1b[0m"
+
+
+def ansi_color(code: str, text: str) -> str:
+    if os.environ.get("NO_COLOR"):
+        return text
+    return f"\x1b[{code}m{text}{ANSI_RESET}"
 
 
 def resolve_config_path() -> Path:
@@ -183,7 +190,15 @@ def secret_fingerprint(secret: str) -> str:
 
 
 def server_log(channel: str, message: str) -> None:
-    print(f"[SERVER][{channel}] {message}")
+    channel_l = channel.lower()
+    # User requested: SERVER bridge=orange, SERVER codex=blue.
+    channel_color = {
+        "bridge": "38;5;208",  # orange
+        "codex": "34",         # blue
+    }.get(channel_l, "37")
+    left = ansi_color("38;5;208", "[SERVER]")  # orange family
+    right = ansi_color(channel_color, f"[{channel}]")
+    print(f"{left}{right} {message}")
 
 
 def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:

@@ -33,6 +33,13 @@ TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
 
 
 ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+ANSI_RESET = "\x1b[0m"
+
+
+def ansi_color(code: str, text: str) -> str:
+    if os.environ.get("NO_COLOR"):
+        return text
+    return f"\x1b[{code}m{text}{ANSI_RESET}"
 
 
 def resolve_config_path() -> Path:
@@ -129,7 +136,27 @@ def secret_fingerprint(secret: str) -> str:
 
 
 def client_log(channel: str, message: str) -> None:
-    print(f"[LAPTOP][{channel}] {message}")
+    channel_l = channel.lower()
+    channel_color = {
+        "config": "36",          # cyan
+        "hello": "32",           # green
+        "context": "35",         # magenta
+        "git": "34",             # blue
+        "jobs": "95",            # bright magenta
+        "bridge": "37",          # white
+        "server-ack": "33",      # yellow
+        "watch": "90",           # bright black
+    }.get(channel_l)
+    if channel_l.startswith("timeline:ci"):
+        channel_color = "96"     # bright cyan
+    elif channel_l.startswith("timeline:server"):
+        channel_color = "93"     # bright yellow
+    elif channel_l.startswith("timeline:"):
+        channel_color = "94"     # bright blue
+
+    left = ansi_color("38;5;45", "[LAPTOP]")   # turquoise
+    right = ansi_color(channel_color or "37", f"[{channel}]")
+    print(f"{left}{right} {message}")
 
 
 def http_json(
