@@ -152,6 +152,33 @@ class Config:
     def task_smoke_policy(self) -> dict[str, Any]:
         return dict(self.raw.get("task_smoke_policy", {}))
 
+    @property
+    def pre_push_checks(self) -> dict[str, list[str]]:
+        raw = dict(self.raw.get("pre_push_checks", {}))
+        return {str(k): [str(x) for x in list(v)] for k, v in raw.items() if isinstance(v, list)}
+
+    @property
+    def pre_push_mapping(self) -> dict[str, str]:
+        raw = dict(self.raw.get("pre_push_mapping", {}))
+        return {str(k): str(v) for k, v in raw.items()}
+
+    @property
+    def post_deploy_smoke_checks(self) -> dict[str, list[str]]:
+        # backward-compatible fallback to task_smoke_checks
+        raw = self.raw.get("post_deploy_smoke_checks", self.raw.get("task_smoke_checks", {}))
+        raw = dict(raw)
+        return {str(k): [str(x) for x in list(v)] for k, v in raw.items() if isinstance(v, list)}
+
+    @property
+    def post_deploy_smoke_mapping(self) -> dict[str, str]:
+        raw = self.raw.get("post_deploy_smoke_mapping", self.raw.get("task_smoke_mapping", {}))
+        raw = dict(raw)
+        return {str(k): str(v) for k, v in raw.items()}
+
+    @property
+    def smoke_auth(self) -> dict[str, Any]:
+        return dict(self.raw.get("smoke_auth", {}))
+
 
 def load_config() -> Config:
     config_path = resolve_config_path()
@@ -417,9 +444,12 @@ def _today_iso_date() -> str:
     return time.strftime("%Y-%m-%d")
 
 
-def _select_task_smoke_commands(task: str, cfg: Config) -> tuple[str | None, list[str]]:
-    checks = cfg.task_smoke_checks
-    mapping = cfg.task_smoke_mapping
+def _select_task_command_set(
+    task: str,
+    *,
+    checks: dict[str, list[str]],
+    mapping: dict[str, str],
+) -> tuple[str | None, list[str]]:
     if not checks:
         return None, []
     task_key = _detect_task_key(task, mapping) if mapping else None
@@ -434,8 +464,18 @@ def _select_task_smoke_commands(task: str, cfg: Config) -> tuple[str | None, lis
     return None, []
 
 
-def run_local_task_smoke(task: str, cfg: Config) -> dict[str, Any] | None:
-    smoke_key, commands = _select_task_smoke_commands(task, cfg)
+def _run_command_set(
+    *,
+    task: str,
+    cfg: Config,
+    stage: str,
+    checks: dict[str, list[str]],
+    mapping: dict[str, str],
+    missing_mapping_error: str,
+    missing_mapping_suggestion: str,
+    command_renderer: callable | None = None,
+) -> dict[str, Any] | None:
+    smoke_key, commands = _select_task_command_set(task, checks=checks, mapping=mapping)
     if not commands:
         policy = cfg.task_smoke_policy
         require_explicit = bool(policy.get("require_explicit_for_numbered_tasks", False))
@@ -447,40 +487,39 @@ def run_local_task_smoke(task: str, cfg: Config) -> dict[str, Any] | None:
         result = {
             "status": "failure",
             "tests_passed": False,
-            "errors": [f"Task {task_no} uchun explicit task smoke mapping topilmadi."],
+            "errors": [missing_mapping_error.format(task_no=task_no)],
             "warnings": [],
-            "suggestions": [
-                "bridge_config.laptop.json ichiga task_smoke_mapping va task_smoke_checks qo'shing."
-            ],
+            "suggestions": [missing_mapping_suggestion],
             "next_action": "fix_required",
-            "stage": "local_smoke",
+            "stage": stage,
             "task": task,
-            "local_smoke": {"check_set": None, "checks": []},
+            stage: {"check_set": None, "checks": []},
         }
         write_last_result(result)
         return result
 
     repo = cfg.laptop_repo_path
-    client_log("jobs", f"local_smoke_set={smoke_key} commands={len(commands)}")
+    client_log("jobs", f"{stage}_set={smoke_key} commands={len(commands)}")
     check_results: list[dict[str, Any]] = []
     errors: list[str] = []
     for command in commands:
-        client_log("bridge", f"[local-smoke] start cmd={command}")
+        rendered = command_renderer(command) if command_renderer else command
+        client_log("bridge", f"[{stage}] start cmd={rendered}")
         started = time.time()
-        res = run_shell(command, repo)
+        res = run_shell(rendered, repo)
         duration = round(time.time() - started, 2)
         check_results.append(
             {
-                "command": command,
+                "command": rendered,
                 "returncode": res.returncode,
                 "stdout": res.stdout,
                 "stderr": res.stderr,
                 "duration_seconds": duration,
             }
         )
-        client_log("bridge", f"[local-smoke] done rc={res.returncode} dur={duration}s")
+        client_log("bridge", f"[{stage}] done rc={res.returncode} dur={duration}s")
         if res.returncode != 0:
-            errors.append(f"Local smoke failed: {command}")
+            errors.append(f"{stage} failed: {rendered}")
             detail = (res.stderr or res.stdout or "").strip()
             if detail:
                 errors.append(detail[:1200])
@@ -492,14 +531,26 @@ def run_local_task_smoke(task: str, cfg: Config) -> dict[str, Any] | None:
         "tests_passed": ok,
         "errors": errors,
         "warnings": [],
-        "suggestions": [] if ok else ["Lokal smoke test xatosini tuzating yoki task_smoke_checks commandlarini tekshiring."],
+        "suggestions": [] if ok else [f"{stage} xatosini tuzating yoki bridge config check commandlarini tekshiring."],
         "next_action": "proceed" if ok else "fix_required",
-        "stage": "local_smoke",
+        "stage": stage,
         "task": task,
-        "local_smoke": {"check_set": smoke_key, "checks": check_results},
+        stage: {"check_set": smoke_key, "checks": check_results},
     }
     write_last_result(result)
     return result
+
+
+def run_local_task_smoke(task: str, cfg: Config) -> dict[str, Any] | None:
+    return _run_command_set(
+        task=task,
+        cfg=cfg,
+        stage="local_smoke",
+        checks=cfg.pre_push_checks or cfg.task_smoke_checks,
+        mapping=cfg.pre_push_mapping or cfg.task_smoke_mapping,
+        missing_mapping_error="Task {task_no} uchun explicit pre-push smoke mapping topilmadi.",
+        missing_mapping_suggestion="bridge_config.laptop.json ichiga pre_push_mapping va pre_push_checks qo'shing.",
+    )
 
 
 def _extract_task_no(task: str) -> str | None:
@@ -864,6 +915,143 @@ def run_runtime_health_checks(task: str, commit: str, cfg: Config, job_id: str) 
         "commit": commit,
         "stage": "runtime_health",
     }
+
+
+def _json_request(method: str, url: str, payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any]]:
+    return http_json(method, url, payload, timeout, token="")
+
+
+def bootstrap_post_deploy_smoke_context(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any]:
+    auth_cfg = cfg.smoke_auth
+    base_url = str(auth_cfg.get("base_url", "https://api.talimy.space")).rstrip("/")
+    tenant_id = str(auth_cfg.get("tenant_id", os.environ.get("BRIDGE_SMOKE_TENANT_ID", ""))).strip()
+    if not tenant_id:
+        tenant_id = str(os.environ.get("BRIDGE_TENANT_ID", "")).strip()
+    if not tenant_id:
+        return {"ok": False, "errors": ["Smoke auth tenant_id topilmadi (smoke_auth.tenant_id yoki BRIDGE_SMOKE_TENANT_ID)."]}
+
+    register_path = str(auth_cfg.get("register_path", "/api/auth/register"))
+    password = str(auth_cfg.get("password", "Password123!"))
+    email_prefix = str(auth_cfg.get("email_prefix", "bridge-smoke"))
+    full_name = str(auth_cfg.get("full_name", "Bridge Smoke Admin"))
+    ts = int(time.time())
+    email = f"{email_prefix}+{ts}@test-school.talimy.space"
+    payload = {
+        "fullName": full_name,
+        "email": email,
+        "password": password,
+        "tenantId": tenant_id,
+    }
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="feature_smoke_status",
+        task=task,
+        commit=commit,
+        message="Feature smoke auth bootstrap boshlandi.",
+        workflow="feature-smoke-auth",
+        status="in_progress",
+    )
+    code, resp = _json_request("POST", f"{base_url}{register_path}", payload, cfg.request_timeout_seconds)
+    if code >= 400:
+        return {"ok": False, "errors": [f"Smoke auth register failed ({code})", json.dumps(resp, ensure_ascii=False)[:1200]]}
+    data = resp.get("data", {}) if isinstance(resp, dict) else {}
+    access_token = str(data.get("accessToken", "")).strip() if isinstance(data, dict) else ""
+    if not access_token:
+        return {"ok": False, "errors": ["Smoke auth accessToken topilmadi", json.dumps(resp, ensure_ascii=False)[:1200]]}
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="feature_smoke_status",
+        task=task,
+        commit=commit,
+        message="Feature smoke auth token olindi.",
+        workflow="feature-smoke-auth",
+        status="completed",
+        conclusion="success",
+    )
+    return {
+        "ok": True,
+        "BASE_URL": base_url,
+        "TENANT_ID": tenant_id,
+        "ACCESS_TOKEN": access_token,
+        "EMAIL": email,
+        "PASSWORD": password,
+    }
+
+
+def _render_smoke_command(command: str, ctx: dict[str, str]) -> str:
+    out = command
+    for key, value in ctx.items():
+        out = out.replace(f"{{{{{key}}}}}", str(value))
+    return out
+
+
+def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
+    checks = cfg.post_deploy_smoke_checks
+    mapping = cfg.post_deploy_smoke_mapping
+    smoke_key, commands = _select_task_command_set(task, checks=checks, mapping=mapping)
+    if not commands:
+        return None
+
+    ctx_bootstrap = bootstrap_post_deploy_smoke_context(task, commit, cfg, job_id)
+    if not ctx_bootstrap.get("ok"):
+        result = {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": list(ctx_bootstrap.get("errors", [])),
+            "warnings": [],
+            "suggestions": ["Smoke auth bootstrap ni tekshiring (auth endpoint, tenantId)."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "post_deploy_smoke",
+        }
+        write_last_result(result)
+        return result
+
+    ctx = {
+        "BASE_URL": str(ctx_bootstrap["BASE_URL"]),
+        "TENANT_ID": str(ctx_bootstrap["TENANT_ID"]),
+        "ACCESS_TOKEN": str(ctx_bootstrap["ACCESS_TOKEN"]),
+        "SMOKE_EMAIL": str(ctx_bootstrap.get("EMAIL", "")),
+        "SMOKE_PASSWORD": str(ctx_bootstrap.get("PASSWORD", "")),
+    }
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="feature_smoke_status",
+        task=task,
+        commit=commit,
+        message=f"Feature smoke boshlandi ({smoke_key}).",
+        workflow=smoke_key,
+        status="queued",
+    )
+    result = _run_command_set(
+        task=task,
+        cfg=cfg,
+        stage="post_deploy_smoke",
+        checks=checks,
+        mapping=mapping,
+        missing_mapping_error="Task {task_no} uchun explicit post-deploy feature smoke mapping topilmadi.",
+        missing_mapping_suggestion="bridge_config.laptop.json ichiga post_deploy_smoke_mapping/checks qo'shing.",
+        command_renderer=lambda cmd: _render_smoke_command(cmd, ctx),
+    )
+    if result is None:
+        return None
+    ok = result.get("next_action") == "proceed"
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="feature_smoke_status",
+        task=task,
+        commit=commit,
+        message=f"Feature smoke {'success' if ok else 'failure'} ({smoke_key}).",
+        workflow=smoke_key,
+        status="completed",
+        conclusion="success" if ok else "failure",
+    )
+    return result
 
 
 def repo_slug_from_git_remote(repo: Path) -> str | None:
@@ -1585,6 +1773,13 @@ def run_push_ci_server_flow(
     if ci_result is not None:
         result["github_ci"] = ci_result.get("github_ci", {})
         write_last_result(result)
+    if result.get("next_action") == "proceed":
+        feature_smoke_result = run_post_deploy_feature_smoke(task, commit, cfg, job_id)
+        if feature_smoke_result is not None:
+            if ci_result is not None:
+                feature_smoke_result["github_ci"] = ci_result.get("github_ci", {})
+            send_telegram_notification(feature_smoke_result, cfg)
+            return summarize_result(feature_smoke_result)
     send_telegram_notification(result, cfg)
     return summarize_result(result)
 

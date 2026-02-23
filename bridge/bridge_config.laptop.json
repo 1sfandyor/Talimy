@@ -61,21 +61,35 @@
       { "name": "platform", "url": "https://platform.talimy.space", "expect_status": 200 }
     ]
   },
-  "task_smoke_mapping": {
-    "2.11": "grades_feature_smoke",
-    "2.12": "exams_feature_smoke",
-    "2.x": "api_quick_smoke"
+  "pre_push_mapping": {
+    "2.x": "api_prepush"
   },
-  "task_smoke_checks": {
-    "api_quick_smoke": ["curl -fsS https://api.talimy.space/api/health > NUL"],
+  "pre_push_checks": {
+    "api_prepush": ["bun run lint --filter=api", "bun run typecheck --filter=api"]
+  },
+  "post_deploy_smoke_mapping": {
+    "2.11": "grades_feature_smoke",
+    "2.12": "exams_feature_smoke"
+  },
+  "post_deploy_smoke_checks": {
     "grades_feature_smoke": [
-      "curl -fsS https://api.talimy.space/api/health > NUL",
-      "if ($env:BRIDGE_SMOKE_TOKEN -and $env:BRIDGE_TENANT_ID) { curl -fsS \"https://api.talimy.space/api/grades?tenantId=$env:BRIDGE_TENANT_ID&page=1&limit=10\" -H \"Authorization: Bearer $env:BRIDGE_SMOKE_TOKEN\" > NUL } else { Write-Error \"missing BRIDGE_SMOKE_TOKEN/BRIDGE_TENANT_ID\"; exit 1 }"
+      "curl -fsS {{BASE_URL}}/api/health > NUL",
+      "curl -fsS \"{{BASE_URL}}/api/grades?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL",
+      "curl -fsS \"{{BASE_URL}}/api/grades/report?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL",
+      "curl -fsS \"{{BASE_URL}}/api/grades/scales?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL"
     ],
     "exams_feature_smoke": [
-      "curl -fsS https://api.talimy.space/api/health > NUL",
-      "if ($env:BRIDGE_SMOKE_TOKEN -and $env:BRIDGE_TENANT_ID) { curl -fsS \"https://api.talimy.space/api/exams?tenantId=$env:BRIDGE_TENANT_ID&page=1&limit=10\" -H \"Authorization: Bearer $env:BRIDGE_SMOKE_TOKEN\" > NUL } else { Write-Error \"missing BRIDGE_SMOKE_TOKEN/BRIDGE_TENANT_ID\"; exit 1 }"
+      "curl -fsS {{BASE_URL}}/api/health > NUL",
+      "curl -fsS \"{{BASE_URL}}/api/exams?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL"
     ]
+  },
+  "smoke_auth": {
+    "base_url": "https://api.talimy.space",
+    "register_path": "/api/auth/register",
+    "tenant_id": "${BRIDGE_SMOKE_TENANT_ID}",
+    "email_prefix": "bridge-smoke",
+    "full_name": "Bridge Smoke Admin",
+    "password": "Password123"
   },
   "task_smoke_policy": {
     "require_explicit_for_numbered_tasks": true
