@@ -20,6 +20,13 @@
     "bot_token": "",
     "chat_id": ""
   },
+  "session_context": {
+    "enabled": false,
+    "path": "C:/Users/isfan/.codex/sessions/2026/02/22/rollout-YYYY-MM-DD-SESSION.jsonl",
+    "max_messages": 12,
+    "max_chars": 4000,
+    "roles": ["user", "assistant"]
+  },
   "server_codex": {
     "enabled": true,
     "binary": "codex",

@@ -155,3 +155,19 @@ CI/Dokploy verification alohida qoladi; bridge local/server smoke checks uchun i
 - `telegram.enabled`
 - `telegram.bot_token`
 - `telegram.chat_id`
+
+## 7) Codex session context (ixtiyoriy, tavsiya etiladi)
+
+Maqsad: laptopdagi Codex session tarixidan qisqa excerpt olib, server Codex review promptiga context sifatida yuborish.
+
+`bridge_config.json`:
+
+- `session_context.enabled = true`
+- `session_context.path = "C:/Users/isfan/.codex/sessions/.../rollout-....jsonl"`
+- `session_context.max_messages`
+- `session_context.max_chars`
+
+Eslatma:
+
+- Bu excerpt faqat context uchun ishlatiladi.
+- Source of truth baribir repo kodi + CI/server checks bo'lib qoladi.

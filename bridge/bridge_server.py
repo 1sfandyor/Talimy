@@ -184,9 +184,19 @@ def run_server_codex_review(trigger: dict[str, Any], config: BridgeConfig, repo_
     codex_bin = str(codex_cfg.get("binary", "codex"))
     timeout = int(codex_cfg.get("timeout_seconds", 300))
 
+    session_ctx = trigger.get("session_context") if isinstance(trigger.get("session_context"), dict) else {}
+    session_excerpt = str(session_ctx.get("excerpt") or "").strip()
+    session_context_block = ""
+    if session_excerpt:
+        session_context_block = (
+            "\n\nLaptop Codex session context (recent excerpt; use only as context, not source of truth):\n"
+            f"{session_excerpt}\n"
+        )
+
     prompt = f"""
 Taskni tekshir: {trigger.get('task', '')}
 Commit: {trigger.get('commit', '')}
+{session_context_block}
 
 Qilish kerak:
 1. Oxirgi commit diffni ko'r: git diff HEAD~1 HEAD
@@ -263,6 +273,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
             "job_id": job_id,
             "stage": "starting",
             "started_at": int(time.time()),
+            "session_context_meta": trigger.get("session_context", {}),
         },
     )
 
@@ -288,6 +299,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
                     "job_id": job_id,
                     "stage": "git",
                     "git": git_steps,
+                    "session_context_meta": trigger.get("session_context", {}),
                 },
             )
             return
@@ -333,6 +345,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         "check_set": check_set_name,
         "codex_review": codex_review,
         "finished_at": int(time.time()),
+        "session_context_meta": trigger.get("session_context", {}),
     }
     state.jobs.write(job_id, result_payload)
 

@@ -74,6 +74,10 @@ class Config:
     def telegram(self) -> dict[str, Any]:
         return dict(self.raw.get("telegram", {}))
 
+    @property
+    def session_context(self) -> dict[str, Any]:
+        return dict(self.raw.get("session_context", {}))
+
 
 def load_config() -> Config:
     return Config(raw=json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
@@ -127,13 +131,19 @@ def push_commit(cfg: Config) -> str:
     return current_commit(repo)
 
 
-def trigger_server(task: str, commit: str, cfg: Config) -> str:
+def trigger_server(task: str, commit: str, cfg: Config, session_context: dict[str, Any] | None = None) -> str:
     job_id = uuid.uuid4().hex
     server = f"http://{cfg.server_host}:{cfg.bridge_port}"
     code, resp = http_json(
         "POST",
         f"{server}/trigger",
-        {"task": task, "commit": commit, "job_id": job_id, "timestamp": int(time.time())},
+        {
+            "task": task,
+            "commit": commit,
+            "job_id": job_id,
+            "timestamp": int(time.time()),
+            "session_context": session_context or {},
+        },
         cfg.request_timeout_seconds,
         cfg.shared_secret,
     )
@@ -214,6 +224,103 @@ def repo_slug_from_git_remote(repo: Path) -> str | None:
 def write_last_result(payload: dict[str, Any]) -> None:
     LAST_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
     LAST_RESULT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _extract_text_from_message_content(content: Any) -> str:
+    parts: list[str] = []
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+    elif isinstance(content, str) and content.strip():
+        parts.append(content.strip())
+    return "\n".join(parts).strip()
+
+
+def build_session_context_excerpt(cfg: Config) -> dict[str, Any] | None:
+    sc = cfg.session_context
+    if not bool(sc.get("enabled", False)):
+        return None
+
+    raw_path = str(sc.get("path", "")).strip()
+    if not raw_path:
+        return None
+
+    path = Path(os.path.expandvars(os.path.expanduser(raw_path)))
+    if not path.exists():
+        return {
+            "enabled": True,
+            "source_path": str(path),
+            "error": "session file not found",
+            "excerpt": "",
+        }
+
+    max_messages = int(sc.get("max_messages", 12))
+    max_chars = int(sc.get("max_chars", 4000))
+    include_roles = {str(x).strip() for x in sc.get("roles", ["user", "assistant"]) if str(x).strip()}
+
+    extracted: list[dict[str, str]] = []
+    try:
+        for raw_line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                row = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+
+            row_type = str(row.get("type", ""))
+            payload = row.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+
+            role: str | None = None
+            text: str = ""
+            if row_type == "response_item" and payload.get("type") == "message":
+                role_val = payload.get("role")
+                role = str(role_val) if isinstance(role_val, str) else None
+                text = _extract_text_from_message_content(payload.get("content"))
+            elif row_type == "event_msg":
+                evt = str(payload.get("type", ""))
+                if evt == "user_message":
+                    role = "user"
+                    text = str(payload.get("message", "")).strip()
+
+            if not role or role not in include_roles or not text:
+                continue
+            extracted.append({"role": role, "text": text})
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "source_path": str(path),
+            "error": f"session read failed: {exc}",
+            "excerpt": "",
+        }
+
+    extracted = extracted[-max_messages:]
+    lines: list[str] = []
+    remaining = max_chars
+    for item in reversed(extracted):
+        block = f"{item['role'].upper()}: {item['text']}"
+        if len(block) > remaining:
+            block = block[: max(0, remaining - 3)] + "..."
+        if block:
+            lines.append(block)
+            remaining -= len(block) + 2
+        if remaining <= 0:
+            break
+    lines.reverse()
+
+    return {
+        "enabled": True,
+        "source_path": str(path),
+        "message_count": len(extracted),
+        "excerpt": "\n\n".join(lines),
+    }
 
 
 def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
@@ -502,6 +609,12 @@ def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
 def run_push_ci_server_flow(task: str, cfg: Config, *, watch: bool = False) -> int:
     hello = bridge_hello(cfg)
     print(f"[bridge-client] hello: {hello.get('message', 'ok')}")
+    session_context = build_session_context_excerpt(cfg)
+    if session_context and session_context.get("excerpt"):
+        print(
+            "[bridge-client] session context loaded "
+            f"({session_context.get('message_count', 0)} messages)"
+        )
     commit = push_commit(cfg)
     print(f"[bridge-client] pushed commit={commit[:12]}")
 
@@ -540,7 +653,7 @@ def run_push_ci_server_flow(task: str, cfg: Config, *, watch: bool = False) -> i
             send_telegram_notification(ci_result, cfg)
             return summarize_result(ci_result)
 
-    job_id = trigger_server(task, commit, cfg)
+    job_id = trigger_server(task, commit, cfg, session_context=session_context)
     print(f"[bridge-client] server_job_id={job_id}")
     send_bridge_event(
         cfg,
