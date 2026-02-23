@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import test from "node:test"
 
-const schemaFilePath = join(process.cwd(), "packages/shared/src/validators/finance.schema.ts")
+const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..")
+const schemaFilePath = join(repoRoot, "packages/shared/src/validators/finance.schema.ts")
 const schemaSource = readFileSync(schemaFilePath, "utf-8")
 
 test("finance schema defines fee structure payment and invoice validators", () => {

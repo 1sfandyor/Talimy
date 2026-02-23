@@ -4,9 +4,10 @@ import { readFileSync } from "fs"
 import { join } from "path"
 import { test } from "node:test"
 
-const serviceFilePath = join(process.cwd(), "apps/api/src/modules/finance/finance.service.ts")
-const controllerFilePath = join(process.cwd(), "apps/api/src/modules/finance/finance.controller.ts")
-const repositoryFilePath = join(process.cwd(), "apps/api/src/modules/finance/finance.repository.ts")
+const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..")
+const serviceFilePath = join(repoRoot, "apps/api/src/modules/finance/finance.service.ts")
+const controllerFilePath = join(repoRoot, "apps/api/src/modules/finance/finance.controller.ts")
+const repositoryFilePath = join(repoRoot, "apps/api/src/modules/finance/finance.repository.ts")
 const serviceSource = readFileSync(serviceFilePath, "utf-8")
 const controllerSource = readFileSync(controllerFilePath, "utf-8")
 const repositorySource = readFileSync(repositoryFilePath, "utf-8")
