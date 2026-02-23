@@ -672,6 +672,8 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
 
     timeout_seconds = int(ci_cfg.get("timeout_seconds", 1800))
     interval_seconds = int(ci_cfg.get("poll_interval_seconds", cfg.poll_interval_seconds))
+    no_run_grace_seconds = int(ci_cfg.get("no_run_grace_seconds", 45))
+    require_runs = bool(ci_cfg.get("require_runs", False))
     watch_workflows = {str(x).strip() for x in ci_cfg.get("workflows", []) if str(x).strip()}
 
     try:
@@ -708,7 +710,6 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
     dots = 0
     last_runs: list[dict[str, Any]] = []
     announced_states: dict[str, str] = {}
-
     while time.time() - started < timeout_seconds:
         cmd = [
             "gh",
@@ -761,7 +762,6 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
         if watch_workflows:
             runs = [r for r in runs if str(r.get("workflowName", "")) in watch_workflows]
         last_runs = runs
-
         for run in runs:
             run_id = str(run.get("databaseId", ""))
             workflow = str(run.get("workflowName", ""))
@@ -829,6 +829,52 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
                     "commit": commit,
                     "stage": "github_ci",
                     "github_ci": {"repo": repo_slug, "runs": runs},
+                }
+        else:
+            elapsed = time.time() - started
+            if elapsed >= no_run_grace_seconds:
+                msg = (
+                    "Commit uchun GitHub Actions run topilmadi (path filter yoki trigger yo'q), "
+                    "keyingi bosqichga o'tyapman"
+                )
+                send_bridge_event(
+                    cfg,
+                    job_id=job_id,
+                    event_type="ci_status",
+                    task=task,
+                    commit=commit,
+                    message=msg,
+                    workflow="github-ci",
+                    status="completed",
+                    conclusion="skipped",
+                )
+                if require_runs:
+                    return {
+                        "status": "failure",
+                        "tests_passed": False,
+                        "errors": ["GitHub CI run topilmadi (grace timeout)."],
+                        "warnings": [],
+                        "suggestions": [
+                            "Workflow trigger/path filtersni tekshiring.",
+                            "Agar bu task CI trigger qilmasligi normal bo'lsa github_ci.require_runs=false qiling.",
+                        ],
+                        "next_action": "fix_required",
+                        "task": task,
+                        "commit": commit,
+                        "stage": "github_ci",
+                        "github_ci": {"repo": repo_slug, "runs": []},
+                    }
+                return {
+                    "status": "success",
+                    "tests_passed": True,
+                    "errors": [],
+                    "warnings": ["GitHub CI run topilmadi; CI bosqichi skip qilindi."],
+                    "suggestions": [],
+                    "next_action": "proceed",
+                    "task": task,
+                    "commit": commit,
+                    "stage": "github_ci",
+                    "github_ci": {"repo": repo_slug, "runs": [], "skipped_no_runs": True},
                 }
 
         dots = (dots + 1) % 4
