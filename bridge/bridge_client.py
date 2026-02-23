@@ -2331,6 +2331,47 @@ def run_runtime_health_checks(task: str, commit: str, cfg: Config, job_id: str) 
     }
 
 
+def _post_deploy_settle_wait(task: str, commit: str, cfg: Config, job_id: str) -> None:
+    seconds = int(cfg.dokploy.get("post_deploy_settle_seconds", 0) or 0)
+    if seconds <= 0:
+        return
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="runtime_status",
+        task=task,
+        commit=commit,
+        message=f"Deploy settle wait boshlandi ({seconds}s).",
+        workflow="deploy-settle",
+        status="in_progress",
+    )
+    client_log("bridge", f"post-deploy settle wait {seconds}s")
+    time.sleep(seconds)
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="runtime_status",
+        task=task,
+        commit=commit,
+        message="Deploy settle wait tugadi.",
+        workflow="deploy-settle",
+        status="completed",
+        conclusion="success",
+    )
+
+
+def _feature_smoke_route_not_ready_detected(result: dict[str, Any]) -> bool:
+    errors = " ".join(str(x) for x in result.get("errors", []))
+    errors_l = errors.lower()
+    route_markers = [
+        "cannot get /api/",
+        "the requested url returned error: 404",
+        "bridge smoke guard: unexpected http 404",
+        "404 not found",
+    ]
+    return any(token in errors_l for token in route_markers)
+
+
 def _json_request(
     method: str,
     url: str,
@@ -2584,6 +2625,25 @@ def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: s
                     result.setdefault("errors", []).append(f"{p.get('path')} body: {p.get('body_excerpt')}")
                     break
     smoke_key = str((result.get("post_deploy_smoke") or {}).get("check_set") or "feature-smoke")
+    route_not_ready = _feature_smoke_route_not_ready_detected(result)
+    if route_not_ready and result.get("next_action") != "proceed":
+        warn = (
+            "Feature smoke route 404/Cannot GET ko'rindi; deploy rollout hali yakunlanmagan bo'lishi mumkin. "
+            "Server runtime review/Codex tekshiruviga defer qilindi."
+        )
+        result.setdefault("warnings", []).append(warn)
+        result["defer_to_server_review"] = True
+        send_bridge_event(
+            cfg,
+            job_id=job_id,
+            event_type="feature_smoke_status",
+            task=task,
+            commit=commit,
+            message="Feature smoke route-not-ready (404/Cannot GET); server reviewga defer qilindi.",
+            workflow=smoke_key,
+            status="completed",
+            conclusion="failure",
+        )
     ok = result.get("next_action") == "proceed"
     send_bridge_event(
         cfg,
@@ -3446,6 +3506,7 @@ def run_push_ci_server_flow(
         write_last_result(runtime_result)
         send_telegram_notification(runtime_result, cfg)
         return summarize_result(runtime_result)
+    _post_deploy_settle_wait(task, commit, cfg, deploy_job_id)
 
     # Run feature smoke after deploy/runtime health, before server runtime/Codex review,
     # so server review sees a more final event timeline.
@@ -3455,9 +3516,11 @@ def run_push_ci_server_flow(
     if feature_smoke_result is not None:
         if ci_result is not None:
             feature_smoke_result["github_ci"] = ci_result.get("github_ci", {})
-        if feature_smoke_result.get("next_action") != "proceed":
+        if feature_smoke_result.get("next_action") != "proceed" and not bool(feature_smoke_result.get("defer_to_server_review")):
             send_telegram_notification(feature_smoke_result, cfg)
             return summarize_result(feature_smoke_result)
+        if bool(feature_smoke_result.get("defer_to_server_review")):
+            client_log("bridge", "post_deploy_smoke route-not-ready detected; continuing to server_runtime_review")
 
     client_log("stage", "server_runtime_review")
     job_id = trigger_server(task, commit, cfg, session_context=session_context)

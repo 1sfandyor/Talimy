@@ -48,7 +48,8 @@
     },
     "auth_header_name": "${DOKPLOY_AUTH_HEADER_NAME}",
     "auth_header_value": "${DOKPLOY_AUTH_HEADER_VALUE}",
-    "request_timeout_seconds": 20
+    "request_timeout_seconds": 20,
+    "post_deploy_settle_seconds": 20
   },
   "runtime_checks": {
     "enabled": true,
