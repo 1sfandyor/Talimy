@@ -16,6 +16,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 from urllib import error, parse, request
 
@@ -407,15 +408,26 @@ def get_bridge_events(job_id: str, cfg: Config) -> dict[str, Any]:
     return resp
 
 
-def watch_bridge_events(job_id: str, cfg: Config, timeout_seconds: int = 1800) -> int:
+def watch_bridge_events(
+    job_id: str,
+    cfg: Config,
+    timeout_seconds: int = 1800,
+    *,
+    stop_event: Event | None = None,
+    label: str = "",
+) -> int:
     started = time.time()
     seen = 0
     dots = 0
+    prefix = f"[{label}] " if label else ""
     while time.time() - started < timeout_seconds:
+        if stop_event is not None and stop_event.is_set():
+            print(f"\n[bridge-client] {prefix}watch-events stopped")
+            return 0
         try:
             payload = get_bridge_events(job_id, cfg)
         except Exception as exc:
-            print(f"\n[bridge-client] watch-events error: {exc}")
+            print(f"\n[bridge-client] {prefix}watch-events error: {exc}")
             time.sleep(cfg.poll_interval_seconds)
             continue
 
@@ -437,14 +449,14 @@ def watch_bridge_events(job_id: str, cfg: Config, timeout_seconds: int = 1800) -
                     parts.append(f"conclusion={conclusion}")
                 if message:
                     parts.append(f"- {message}")
-                print("\n" + " | ".join(parts))
+                print("\n" + prefix + " | ".join(parts))
             seen = len(events)
         else:
             dots = (dots + 1) % 4
-            print(f"\r[bridge-client] watching events{'.' * dots}   ", end="", flush=True)
+            print(f"\r[bridge-client] {prefix}watching events{'.' * dots}   ", end="", flush=True)
         time.sleep(cfg.poll_interval_seconds)
 
-    print("\n[bridge-client] watch-events timeout")
+    print(f"\n[bridge-client] {prefix}watch-events timeout")
     return 0
 
 
@@ -487,13 +499,14 @@ def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
         return
 
 
-def run_push_ci_server_flow(task: str, cfg: Config) -> int:
+def run_push_ci_server_flow(task: str, cfg: Config, *, watch: bool = False) -> int:
     hello = bridge_hello(cfg)
     print(f"[bridge-client] hello: {hello.get('message', 'ok')}")
     commit = push_commit(cfg)
     print(f"[bridge-client] pushed commit={commit[:12]}")
 
     ci_job_id = f"ci-{uuid.uuid4().hex}"
+    print(f"[bridge-client] ci_job_id={ci_job_id}")
     send_bridge_event(
         cfg,
         job_id=ci_job_id,
@@ -503,7 +516,23 @@ def run_push_ci_server_flow(task: str, cfg: Config) -> int:
         message="Laptop Codex bridge ulandi, CI ni kuzatishni boshlayman.",
     )
 
+    ci_watch_stop: Event | None = None
+    ci_watch_thread: Thread | None = None
+    if watch:
+        ci_watch_stop = Event()
+        ci_watch_thread = Thread(
+            target=watch_bridge_events,
+            args=(ci_job_id, cfg),
+            kwargs={"stop_event": ci_watch_stop, "label": "ci"},
+            daemon=True,
+        )
+        ci_watch_thread.start()
+
     ci_result = wait_for_github_ci(commit, task, cfg, ci_job_id)
+    if ci_watch_stop is not None:
+        ci_watch_stop.set()
+    if ci_watch_thread is not None:
+        ci_watch_thread.join(timeout=2)
     if ci_result is not None:
         print("")
         if ci_result.get("next_action") != "proceed":
@@ -512,6 +541,7 @@ def run_push_ci_server_flow(task: str, cfg: Config) -> int:
             return summarize_result(ci_result)
 
     job_id = trigger_server(task, commit, cfg)
+    print(f"[bridge-client] server_job_id={job_id}")
     send_bridge_event(
         cfg,
         job_id=job_id,
@@ -524,7 +554,24 @@ def run_push_ci_server_flow(task: str, cfg: Config) -> int:
         conclusion="success",
     )
     print(f"[bridge-client] triggered server checks, job_id={job_id}")
+
+    srv_watch_stop: Event | None = None
+    srv_watch_thread: Thread | None = None
+    if watch:
+        srv_watch_stop = Event()
+        srv_watch_thread = Thread(
+            target=watch_bridge_events,
+            args=(job_id, cfg),
+            kwargs={"stop_event": srv_watch_stop, "label": "server"},
+            daemon=True,
+        )
+        srv_watch_thread.start()
+
     result = wait_for_result(job_id, cfg)
+    if srv_watch_stop is not None:
+        srv_watch_stop.set()
+    if srv_watch_thread is not None:
+        srv_watch_thread.join(timeout=2)
     if result is None:
         timeout_result = {
             "status": "failure",
@@ -593,12 +640,12 @@ def next_reja_task(tasks_file: Path) -> tuple[str, str] | None:
 def usage() -> int:
     print("Usage:")
     print("  python bridge/bridge_client.py hello")
-    print("  python bridge/bridge_client.py push \"task description\"")
+    print("  python bridge/bridge_client.py push \"task description\" [--watch]")
     print("  python bridge/bridge_client.py wait <job_id>")
     print("  python bridge/bridge_client.py events <job_id>")
     print("  python bridge/bridge_client.py watch-events <job_id>")
     print("  python bridge/bridge_client.py next-task")
-    print("  python bridge/bridge_client.py bridge-push-next")
+    print("  python bridge/bridge_client.py bridge-push-next [--watch]")
     return 1
 
 
@@ -627,7 +674,8 @@ def main() -> int:
             print("Task description required")
             return 1
         task = sys.argv[2]
-        return run_push_ci_server_flow(task, cfg)
+        watch = "--watch" in sys.argv[3:]
+        return run_push_ci_server_flow(task, cfg, watch=watch)
 
     if cmd == "wait":
         if len(sys.argv) < 3:
@@ -661,7 +709,8 @@ def main() -> int:
         task_no, title = nxt
         task = f"{task_no} {title}"
         print(f"[bridge-client] next task selected: {task}")
-        return run_push_ci_server_flow(task, cfg)
+        watch = "--watch" in sys.argv[2:]
+        return run_push_ci_server_flow(task, cfg, watch=watch)
 
     return usage()
 

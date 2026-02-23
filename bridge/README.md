@@ -56,6 +56,12 @@ Manual task:
 python bridge/bridge_client.py push "2.12 Exams Module smoke test"
 ```
 
+Realtime event tail bilan:
+
+```bash
+python bridge/bridge_client.py push "2.12 Exams Module smoke test" --watch
+```
+
 Reja tracker bo'yicha keyingi taskni ko'rish:
 
 ```bash
@@ -66,6 +72,12 @@ Keyingi task nomi bilan push + trigger:
 
 ```bash
 python bridge/bridge_client.py bridge-push-next
+```
+
+Realtime tail bilan:
+
+```bash
+python bridge/bridge_client.py bridge-push-next --watch
 ```
 
 CI/bridge event tarixini ko'rish (`job_id` bo'yicha):
@@ -79,6 +91,13 @@ CI/bridge eventlarni realtime kuzatish (tail mode):
 ```bash
 python bridge/bridge_client.py watch-events <job_id>
 ```
+
+`job_id`ni olish:
+
+- `push` / `bridge-push-next` command outputida client chiqaradi:
+  - `ci_job_id=...`
+  - `server_job_id=...`
+- yakuniy natija fayli: `bridge/.bridge-state/last_bridge_result.json`
 
 ## 4) Natija formati
 
