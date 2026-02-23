@@ -31,6 +31,9 @@ REJA_ROW_RE = re.compile(
 )
 TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
 JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")
+UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
 
 
 ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
@@ -195,6 +198,15 @@ def parse_json_object_from_text(text: str) -> dict[str, Any] | None:
     text = (text or "").strip()
     if not text:
         return None
+
+
+def extract_first_uuid(text: str) -> str | None:
+    if not text:
+        return None
+    m = UUID_RE.search(text)
+    if not m:
+        return None
+    return m.group(0)
     try:
         data = json.loads(text)
         return data if isinstance(data, dict) else None
@@ -645,6 +657,7 @@ def _run_command_set(
             commands = [str(x) for x in generated.get("commands", [])]
             smoke_key = f"dynamic:{stage}"
             dynamic_meta = {"generated": True, "notes": str(generated.get("notes", "")).strip()}
+            client_log("jobs", f"{stage}_set={smoke_key} source=dynamic-codex commands={len(commands)}")
         elif generated.get("errors") and cfg.dynamic_smoke.get("enabled", False):
             # Keep explicit mapping policy behavior, but surface dynamic generation failure if it was enabled.
             dynamic_meta = {"generated": False, "errors": [str(x) for x in generated.get("errors", [])]}
@@ -672,7 +685,8 @@ def _run_command_set(
         return result
 
     repo = cfg.laptop_repo_path
-    client_log("jobs", f"{stage}_set={smoke_key} commands={len(commands)}")
+    if not (dynamic_meta and dynamic_meta.get("generated")):
+        client_log("jobs", f"{stage}_set={smoke_key} source=explicit commands={len(commands)}")
     check_results: list[dict[str, Any]] = []
     errors: list[str] = []
     for command in commands:
@@ -1109,6 +1123,37 @@ def _json_request(method: str, url: str, payload: dict[str, Any], timeout: int) 
     return http_json(method, url, payload, timeout, token="")
 
 
+def _discover_smoke_tenant_id(cfg: Config) -> str | None:
+    auth_cfg = cfg.smoke_auth
+    explicit_cmd = str(auth_cfg.get("tenant_id_query_command", "")).strip()
+    commands: list[str] = []
+    if explicit_cmd:
+        commands.append(explicit_cmd)
+
+    if os.name == "nt":
+        commands.append(
+            "if ($env:DATABASE_URL) { psql \"$env:DATABASE_URL\" -At -c \"select id from tenants where deleted_at is null order by created_at desc limit 1;\" }"
+        )
+    else:
+        commands.append(
+            "if [ -n \"$DATABASE_URL\" ]; then psql \"$DATABASE_URL\" -At -c \"select id from tenants where deleted_at is null order by created_at desc limit 1;\"; fi"
+        )
+
+    repo = cfg.laptop_repo_path
+    for command in commands:
+        if not command.strip():
+            continue
+        client_log("bridge", "smoke tenant discovery start")
+        res = run_shell(command, repo)
+        if res.returncode != 0:
+            continue
+        tenant_id = extract_first_uuid((res.stdout or "").strip()) or extract_first_uuid((res.stderr or "").strip())
+        if tenant_id:
+            client_log("bridge", f"smoke tenant discovery success tenant_id={tenant_id}")
+            return tenant_id
+    return None
+
+
 def bootstrap_post_deploy_smoke_context(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any]:
     auth_cfg = cfg.smoke_auth
     base_url = str(auth_cfg.get("base_url", "https://api.talimy.space")).rstrip("/")
@@ -1116,7 +1161,14 @@ def bootstrap_post_deploy_smoke_context(task: str, commit: str, cfg: Config, job
     if not tenant_id:
         tenant_id = str(os.environ.get("BRIDGE_TENANT_ID", "")).strip()
     if not tenant_id:
-        return {"ok": False, "errors": ["Smoke auth tenant_id topilmadi (smoke_auth.tenant_id yoki BRIDGE_SMOKE_TENANT_ID)."]}
+        tenant_id = str(_discover_smoke_tenant_id(cfg) or "").strip()
+    if not tenant_id:
+        return {
+            "ok": False,
+            "errors": [
+                "Smoke auth tenant_id topilmadi (smoke_auth.tenant_id / BRIDGE_SMOKE_TENANT_ID / DATABASE_URL orqali auto-discovery)."
+            ],
+        }
 
     register_path = str(auth_cfg.get("register_path", "/api/auth/register"))
     password = str(auth_cfg.get("password", "Password123!"))
