@@ -834,13 +834,14 @@ def _run_command_set(
                         status="in_progress",
                         message="Smoke cmd repaired by laptop Codex, retrying single command.",
                     )
-                client_log("bridge", f"[{stage}] retry repaired cmd={repaired_command}")
+                repaired_rendered = command_renderer(repaired_command) if command_renderer else repaired_command
+                client_log("bridge", f"[{stage}] retry repaired cmd={repaired_rendered}")
                 started2 = time.time()
-                res2 = run_shell_or_direct(repaired_command, repo)
+                res2 = run_shell_or_direct(repaired_rendered, repo)
                 duration2 = round(time.time() - started2, 2)
                 check_results.append(
                     {
-                        "command": repaired_command,
+                        "command": repaired_rendered,
                         "returncode": res2.returncode,
                         "stdout": res2.stdout,
                         "stderr": res2.stderr,
@@ -865,7 +866,7 @@ def _run_command_set(
                     continue
                 stderr_text = (res2.stderr or "").strip()
                 stdout_text = (res2.stdout or "").strip()
-                rendered = repaired_command
+                rendered = repaired_rendered
             errors.append(f"{stage} failed: {rendered}")
             detail = (stderr_text or stdout_text).strip()
             if detail:
