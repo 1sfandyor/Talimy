@@ -1315,4 +1315,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        print("\n[bridge-client] To'xtatildi.")
+        raise SystemExit(130)
