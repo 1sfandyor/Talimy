@@ -836,6 +836,28 @@ def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) ->
     return last
 
 
+def _git_status_short(cfg: Config) -> list[str]:
+    res = run_git(["git", "status", "--short"], cfg.laptop_repo_path)
+    if res.returncode != 0:
+        return []
+    return [line.rstrip() for line in (res.stdout or "").splitlines() if line.strip()]
+
+
+def _git_changed_files(cfg: Config) -> list[str]:
+    res = run_git(["git", "diff", "--name-only"], cfg.laptop_repo_path)
+    if res.returncode != 0:
+        return []
+    return [line.strip() for line in (res.stdout or "").splitlines() if line.strip()]
+
+
+def _git_diff_stat(cfg: Config, max_lines: int = 20) -> list[str]:
+    res = run_git(["git", "diff", "--stat"], cfg.laptop_repo_path)
+    if res.returncode != 0:
+        return []
+    lines = [line.rstrip() for line in (res.stdout or "").splitlines() if line.strip()]
+    return lines[:max_lines]
+
+
 def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any], attempt: int) -> bool:
     af = cfg.auto_fix
     if not bool(af.get("enabled", False)):
@@ -870,6 +892,11 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         "5. FAQAT qisqa yakun yoz: nima tuzatding\n"
     )
     client_log("bridge", f"auto-fix start attempt={attempt + 1}/{max_retries} stage={stage}")
+    before_status = _git_status_short(cfg)
+    if before_status:
+        client_log("bridge", f"auto-fix pre-status entries={len(before_status)}")
+    else:
+        client_log("bridge", "auto-fix pre-status clean")
     try:
         res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
     except FileNotFoundError:
@@ -879,6 +906,24 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         err = (res.stderr or res.stdout or "").strip()
         client_log("bridge", f"auto-fix codex failed rc={res.returncode} {err[:240]}")
         return False
+    after_status = _git_status_short(cfg)
+    changed_files = _git_changed_files(cfg)
+    diff_stat = _git_diff_stat(cfg)
+    if changed_files:
+        preview = ", ".join(changed_files[:8])
+        if len(changed_files) > 8:
+            preview += ", ..."
+        client_log("bridge", f"auto-fix changed_files={len(changed_files)} [{preview}]")
+    else:
+        client_log("bridge", "auto-fix changed_files=0 (no unstaged diff)")
+    if diff_stat:
+        client_log("bridge", "auto-fix diffstat:")
+        for line in diff_stat:
+            client_log("bridge", f"  {line}")
+    if after_status:
+        client_log("bridge", f"auto-fix post-status entries={len(after_status)}")
+    else:
+        client_log("bridge", "auto-fix post-status clean")
     summary = (res.stdout or "").strip().splitlines()
     if summary:
         client_log("bridge", f"auto-fix summary: {summary[-1][:240]}")
