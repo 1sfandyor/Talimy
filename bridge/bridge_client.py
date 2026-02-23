@@ -198,15 +198,6 @@ def parse_json_object_from_text(text: str) -> dict[str, Any] | None:
     text = (text or "").strip()
     if not text:
         return None
-
-
-def extract_first_uuid(text: str) -> str | None:
-    if not text:
-        return None
-    m = UUID_RE.search(text)
-    if not m:
-        return None
-    return m.group(0)
     try:
         data = json.loads(text)
         return data if isinstance(data, dict) else None
@@ -220,6 +211,15 @@ def extract_first_uuid(text: str) -> str | None:
         return data if isinstance(data, dict) else None
     except Exception:
         return None
+
+
+def extract_first_uuid(text: str) -> str | None:
+    if not text:
+        return None
+    m = UUID_RE.search(text)
+    if not m:
+        return None
+    return m.group(0)
 
 
 def secret_fingerprint(secret: str) -> str:
