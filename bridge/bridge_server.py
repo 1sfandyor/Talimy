@@ -294,6 +294,10 @@ def run_codex_prompt(
             continue
         if "unknown option '--no-interactive'" in stderr_l:
             continue
+        if "unexpected argument '-q'" in stderr_l:
+            continue
+        if "unknown option '-q'" in stderr_l:
+            continue
         # For non-flag errors (real codex/runtime errors), stop and return.
         return result
     assert last_result is not None
