@@ -2015,8 +2015,20 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         client_log("bridge", "auto-fix skipped: local codex CLI topilmadi")
         return False
     if res.returncode != 0:
-        err = (res.stderr or res.stdout or "").strip()
-        client_log("bridge", f"auto-fix codex failed rc={res.returncode} {err[:240]}")
+        stderr_text = (res.stderr or "").strip()
+        stdout_text = (res.stdout or "").strip()
+        merged = stderr_text or stdout_text
+        merged_l = merged.lower()
+        if "usage limit" in merged_l or "hit your usage limit" in merged_l:
+            client_log("bridge", f"auto-fix skipped: local codex usage limit (rc={res.returncode})")
+        else:
+            client_log("bridge", f"auto-fix codex failed rc={res.returncode}")
+        if stderr_text:
+            # Codex often prints banner first; tail is usually the real failure reason.
+            tail = stderr_text[-700:]
+            client_log("bridge", f"auto-fix codex stderr-tail: {tail}")
+        elif stdout_text:
+            client_log("bridge", f"auto-fix codex stdout-tail: {stdout_text[-700:]}")
         return False
     after_status = _git_status_short(cfg)
     after_paths = _git_status_paths(cfg)
