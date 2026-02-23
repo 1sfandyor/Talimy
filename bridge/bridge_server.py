@@ -77,6 +77,17 @@ class BridgeConfig:
             for k, v in dict(self.raw.get("task_check_mapping", {})).items()
         }
 
+    @property
+    def service_name_patterns(self) -> dict[str, list[str]]:
+        raw = dict(self.raw.get("service_name_patterns", {}))
+        parsed: dict[str, list[str]] = {}
+        for alias, patterns in raw.items():
+            if isinstance(patterns, list):
+                parsed[str(alias)] = [str(x) for x in patterns]
+            elif isinstance(patterns, str):
+                parsed[str(alias)] = [patterns]
+        return parsed
+
 
 class JsonStore:
     def __init__(self, results_dir: Path) -> None:
@@ -164,6 +175,7 @@ def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
 
 
 TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
+SERVICE_TOKEN_RE = re.compile(r"\{\{service:(?P<alias>[a-zA-Z0-9_-]+)\}\}")
 
 
 def detect_check_set(
@@ -187,6 +199,49 @@ def detect_check_set(
     if any(token in task_l for token in ["web", "frontend", "next", "platform"]):
         return "web", checks.get("web", checks.get("default", []))
     return "default", checks.get("default", [])
+
+
+def list_docker_services(cwd: Path) -> list[str]:
+    res = run_command('docker service ls --format "{{.Name}}"', cwd, timeout=60)
+    if res["returncode"] != 0:
+        return []
+    return [line.strip() for line in str(res["stdout"]).splitlines() if line.strip()]
+
+
+def resolve_service_alias(alias: str, config: BridgeConfig, cwd: Path) -> str:
+    patterns = config.service_name_patterns.get(alias, [])
+    services = list_docker_services(cwd)
+    if not services:
+        return alias
+
+    for pattern in patterns:
+        for name in services:
+            if name == pattern:
+                return name
+        for name in services:
+            if name.startswith(pattern):
+                return name
+        for name in services:
+            if pattern in name:
+                return name
+
+    # Reasonable fallback for common aliases if config not filled yet
+    fallback_tokens = [f"talimy-{alias}", alias]
+    for token in fallback_tokens:
+        for name in services:
+            if name.startswith(token) or token in name:
+                return name
+    return alias
+
+
+def render_check_command(command: str, config: BridgeConfig, cwd: Path) -> str:
+    def repl(match: re.Match[str]) -> str:
+        alias = match.group("alias")
+        return resolve_service_alias(alias, config, cwd)
+
+    if "{{service:" not in command:
+        return command
+    return SERVICE_TOKEN_RE.sub(repl, command)
 
 
 def run_server_codex_review(
@@ -334,10 +389,13 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     check_results: list[dict[str, Any]] = []
     check_errors: list[str] = []
     for cmd in checks:
-        res = run_command(cmd, workdir, timeout=1200)
+        rendered_cmd = render_check_command(cmd, config, workdir)
+        res = run_command(rendered_cmd, workdir, timeout=1200)
+        if rendered_cmd != cmd:
+            res["command_template"] = cmd
         check_results.append(res)
         if res["returncode"] != 0:
-            check_errors.append(f"{cmd} failed")
+            check_errors.append(f"{rendered_cmd} failed")
             if res["stderr"].strip():
                 check_errors.append(res["stderr"].strip())
             break

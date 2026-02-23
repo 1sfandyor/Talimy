@@ -67,6 +67,11 @@
     "16.x": "default",
     "17.x": "default"
   },
+  "service_name_patterns": {
+    "api": ["talimy-api-"],
+    "web": ["talimy-web-"],
+    "platform": ["talimy-platform-"]
+  },
   "server_checks": {
     "default": ["bun run typecheck --filter=api", "bun run lint --filter=api"],
     "api": ["bun run typecheck --filter=api", "bun run lint --filter=api"],

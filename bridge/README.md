@@ -160,8 +160,8 @@ Sizning holatda serverda source repo bo'lmasligi mumkin (GHCR image + Dokploy de
 
 Misol (`server_checks.api_runtime`):
 
-- `docker service ps talimy-api-7bawha --no-trunc`
-- `docker service logs --tail=200 talimy-api-7bawha`
+- `docker service ps {{service:api}} --no-trunc`
+- `docker service logs --tail=200 {{service:api}}`
 - `curl -fsS https://api.talimy.space/api/health`
 
 So'ng `task_check_mapping`:
@@ -169,6 +169,8 @@ So'ng `task_check_mapping`:
 - `2.x` -> `api_runtime`
 
 Shunda laptop Codex kod/CI bilan ishlaydi, server Codex esa faqat deploy/runtime xatolarni (Bad Gateway, restart loop, DI errors) tahlil qiladi.
+
+`{{service:api}}`, `{{service:web}}`, `{{service:platform}}` placeholderlari `docker service ls` orqali avtomatik resolve qilinadi. `bridge_config.json` ichida `service_name_patterns` bilan prefixlarni sozlaysiz.
 
 ## 6) Qo'shimcha config (GitHub CI + Telegram)
 
