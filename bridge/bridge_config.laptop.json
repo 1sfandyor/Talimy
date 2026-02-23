@@ -17,12 +17,12 @@
     "workflows": ["CD API", "CD Web", "CD Platform"]
   },
   "telegram": {
-    "enabled": false,
+    "enabled": "${TELEGRAM_ENABLED}",
     "bot_token": "${TELEGRAM_BOT_TOKEN}",
     "chat_id": "${TELEGRAM_CHAT_ID}"
   },
   "dokploy": {
-    "enabled": false,
+    "enabled": "${DOKPLOY_ENABLED}",
     "deploy_hook_url": "${DOKPLOY_DEPLOY_HOOK_URL}",
     "auth_header_name": "${DOKPLOY_AUTH_HEADER_NAME}",
     "auth_header_value": "${DOKPLOY_AUTH_HEADER_VALUE}",

@@ -48,7 +48,12 @@ def expand_env_placeholders(value: Any) -> Any:
     if isinstance(value, str):
         m = ENV_TOKEN_RE.match(value.strip())
         if m:
-            return os.environ.get(m.group(1), "")
+            value = os.environ.get(m.group(1), "")
+        lowered = value.strip().lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
     return value
 
 
