@@ -1035,6 +1035,67 @@ def _git_diff_stat(cfg: Config, max_lines: int = 20) -> list[str]:
     return lines[:max_lines]
 
 
+def _auto_fix_target_hints(task: str, stage: str, failure_result: dict[str, Any]) -> list[str]:
+    texts: list[str] = [task, stage]
+    for key in ("errors", "warnings", "suggestions"):
+        vals = failure_result.get(key, [])
+        if isinstance(vals, list):
+            texts.extend(str(x) for x in vals[:8])
+    blob = "\n".join(texts).lower()
+    hints: list[str] = []
+
+    task_no = _extract_task_no(task)
+    if task_no:
+        if task_no.startswith("2.11"):
+            hints.extend([
+                "apps/api/src/modules/grades/**",
+                "packages/shared/src/validators/grade.schema.ts",
+            ])
+        elif task_no.startswith("2.12"):
+            hints.extend([
+                "apps/api/src/modules/exams/**",
+                "packages/shared/src/validators/exam.schema.ts",
+            ])
+        elif task_no.startswith("2.14"):
+            hints.extend([
+                "apps/api/src/modules/schedule/**",
+                "apps/api/src/modules/classes/**",
+                "packages/shared/src/validators/**schedule*.ts",
+            ])
+        elif task_no.startswith("2."):
+            hints.extend([
+                "apps/api/src/modules/**",
+                "packages/shared/src/validators/**",
+            ])
+
+    if "/api/classes/" in blob and "/schedule" in blob:
+        hints.extend([
+            "apps/api/src/modules/classes/classes.controller.ts",
+            "apps/api/src/modules/classes/dto/**",
+            "apps/api/src/modules/schedule/**",
+        ])
+    if "/api/schedule" in blob or "/api/schedules" in blob:
+        hints.extend([
+            "apps/api/src/modules/schedule/**",
+            "apps/api/src/modules/schedule/dto/**",
+            "packages/shared/src/validators/**schedule*.ts",
+        ])
+    if "validation failed" in blob:
+        hints.extend([
+            "apps/api/src/common/**",
+            "apps/api/src/modules/**/dto/**",
+            "packages/shared/src/validators/**",
+        ])
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for hint in hints:
+        if hint not in seen:
+            seen.add(hint)
+            deduped.append(hint)
+    return deduped[:12]
+
+
 def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any], attempt: int) -> bool:
     af = cfg.auto_fix
     if not bool(af.get("enabled", False)):
@@ -1050,6 +1111,14 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
     errors = [str(x) for x in failure_result.get("errors", [])]
     warnings = [str(x) for x in failure_result.get("warnings", [])][:5]
     suggestions = [str(x) for x in failure_result.get("suggestions", [])][:5]
+    target_hints = _auto_fix_target_hints(task, stage, failure_result)
+    target_block = ""
+    if target_hints:
+        target_block = (
+            "Source-file targeting hints (search these first; do not hardcode assumptions):\n- "
+            + "\n- ".join(target_hints)
+            + "\n\n"
+        )
 
     prompt = (
         f"Talimy bridge auto-fix cycle. Task: {task}\n"
@@ -1061,6 +1130,7 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         "- AGENTS.md ni o'qi va qat'iy amal qil.\n"
         "- docReja/Reja.md va docReja/Documentation.html kontekstini hisobga ol.\n"
         "- Best-practice first, temporary workaround qilma.\n\n"
+        f"{target_block}"
         "Qilish kerak:\n"
         "1. Xatoni tuzat (minimal-diff, best-practice)\n"
         "2. Lokal smoke/lint/typecheck zarur bo'lsa ishlat\n"
