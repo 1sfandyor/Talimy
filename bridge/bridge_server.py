@@ -395,6 +395,15 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     tests_passed = len(check_errors) == 0
 
     codex_review = run_server_codex_review(trigger, config, workdir, mode=mode)
+    if codex_review:
+        review_status = str(codex_review.get("status", "unknown"))
+        review_next = str(codex_review.get("next_action", "unknown"))
+        review_errors = codex_review.get("errors", [])
+        review_error_count = len(review_errors) if isinstance(review_errors, list) else 0
+        print(
+            f"[bridge-server] codex review job={job_id} status={review_status} "
+            f"next_action={review_next} errors={review_error_count}"
+        )
 
     warnings: list[str] = []
     suggestions: list[str] = []
