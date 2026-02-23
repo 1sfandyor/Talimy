@@ -11,6 +11,7 @@ import { LoggerMiddleware } from "./common/middleware/logger.middleware"
 import { TenantMiddleware } from "./common/middleware/tenant.middleware"
 import { PermifyModule } from "./modules/authz/permify/permify.module"
 import { AuthModule } from "./modules/auth/auth.module"
+import { AssignmentsModule } from "./modules/assignments/assignments.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
 import { ClassesModule } from "./modules/classes/classes.module"
 import { ExamsModule } from "./modules/exams/exams.module"
@@ -38,6 +39,7 @@ import { UsersModule } from "./modules/users/users.module"
     ScheduleModule,
     ClassesModule,
     AttendanceModule,
+    AssignmentsModule,
     GradesModule,
     ExamsModule,
     FinanceModule,
