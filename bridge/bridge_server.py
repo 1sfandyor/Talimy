@@ -250,15 +250,15 @@ def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
 
 
 def run_command_logged(command: str, cwd: Path, timeout: int = 300, *, job_id: str = "-") -> dict[str, Any]:
-    server_log("bridge", f"check start job={job_id} cmd={command}")
+    server_log("bridge", f"check start cmd={command}")
     res = run_command(command, cwd, timeout=timeout)
     server_log(
         "bridge",
-        f"check done  job={job_id} rc={res['returncode']} dur={res['duration_seconds']}s cmd={command}",
+        f"check done  rc={res['returncode']} dur={res['duration_seconds']}s cmd={command}",
     )
     if res["returncode"] != 0 and str(res.get("stderr") or "").strip():
         first_line = str(res["stderr"]).strip().splitlines()[0][:240]
-        server_log("bridge", f"check stderr job={job_id} {first_line}")
+        server_log("bridge", f"check stderr {first_line}")
     return res
 
 
@@ -342,15 +342,20 @@ def run_codex_prompt(
 ) -> subprocess.CompletedProcess[str]:
     """Run codex prompt with CLI-compat fallback across versions."""
     variants = [
-        [codex_bin, "exec", "--skip-git-repo-check", "--color", "never", prompt],
-        [codex_bin, "exec", "--color", "never", prompt],
+        [codex_bin, "exec", "--skip-git-repo-check", "-s", "danger-full-access", "-a", "never", "--color", "never", prompt],
+        [codex_bin, "exec", "-s", "danger-full-access", "-a", "never", "--color", "never", prompt],
+        [codex_bin, "exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "--color", "never", prompt],
+        [codex_bin, "-s", "danger-full-access", "-a", "never", "--no-interactive", "-q", prompt],
+        [codex_bin, "-s", "danger-full-access", "-a", "never", "-q", prompt],
+        [codex_bin, "-s", "danger-full-access", "-a", "never", prompt],
         [codex_bin, "--no-interactive", "-q", prompt],
         [codex_bin, "-q", prompt],
         [codex_bin, prompt],
     ]
     last_result: subprocess.CompletedProcess[str] | None = None
     for args in variants:
-        server_log("codex", f"invoke job={job_id} variant={' '.join(args[:4])} ...")
+        preview = " ".join(args[:8])
+        server_log("codex", f"invoke variant={preview} ...")
         proc = subprocess.Popen(
             args,
             cwd=str(cwd),
@@ -380,11 +385,11 @@ def run_codex_prompt(
                 if kind == "stdout":
                     # Avoid dumping full JSON payloads to server logs.
                     if line.startswith("{") or line.startswith("["):
-                        server_log("codex", f"stdout job={job_id} (json chunk {len(chunk)} chars)")
+                        server_log("codex", f"stdout (json chunk {len(chunk)} chars)")
                     else:
-                        server_log("codex", f"stdout job={job_id} {line[:240]}")
+                        server_log("codex", f"stdout {line[:240]}")
                 else:
-                    server_log("codex", f"stderr job={job_id} {line[:240]}")
+                    server_log("codex", f"stderr {line[:240]}")
 
         t_out = threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True)
         t_err = threading.Thread(target=_reader, args=(proc.stderr, "stderr"), daemon=True)
@@ -401,7 +406,7 @@ def run_codex_prompt(
                 with io_lock:
                     out_len = sum(len(x) for x in stdout_chunks)
                     err_len = sum(len(x) for x in stderr_chunks)
-                server_log("codex", f"invoke waiting job={job_id} elapsed={elapsed}s stdout_chars={out_len} stderr_chars={err_len}")
+                server_log("codex", f"invoke waiting elapsed={elapsed}s stdout_chars={out_len} stderr_chars={err_len}")
             if time.time() - started > timeout:
                 proc.kill()
                 break
@@ -418,7 +423,7 @@ def run_codex_prompt(
             stderr = ((stderr or "") + f"\nTimeout after {timeout}s").strip()
         result = subprocess.CompletedProcess(args=args, returncode=rc, stdout=stdout, stderr=stderr)
         last_result = result
-        server_log("codex", f"invoke result job={job_id} rc={result.returncode}")
+        server_log("codex", f"invoke result rc={result.returncode}")
         stderr_l = (result.stderr or "").lower()
         if result.returncode == 0:
             return result
@@ -507,7 +512,7 @@ Qilish kerak:
 
     try:
         policy_meta = f" policy_fp={policy_fp}" if policy_fp else ""
-        server_log("codex", f"review start job={job_id} mode={mode}{policy_meta}")
+        server_log("codex", f"review start mode={mode}{policy_meta}")
         result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout, job_id=job_id)
     except Exception as exc:  # pragma: no cover - runtime safeguard
         return {
@@ -540,7 +545,7 @@ Qilish kerak:
     parsed["codex_returncode"] = result.returncode
     if policy_fp:
         parsed["policy_fp"] = policy_fp
-    server_log("codex", f"review parsed job={job_id} status={parsed.get('status', 'unknown')}")
+    server_log("codex", f"review parsed status={parsed.get('status', 'unknown')}")
     return parsed
 
 
@@ -604,7 +609,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
             "session_context_meta": trigger.get("session_context", {}),
         },
     )
-    server_log("bridge", f"job start job={job_id} task={task}")
+    server_log("bridge", f"job start task={task}")
 
     git_steps: list[dict[str, Any]] = []
 
@@ -633,7 +638,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         review_error_count = len(review_errors) if isinstance(review_errors, list) else 0
         server_log(
             "codex",
-            f"review job={job_id} status={review_status} next_action={review_next} errors={review_error_count}",
+            f"review status={review_status} next_action={review_next} errors={review_error_count}",
         )
 
     warnings: list[str] = []
@@ -675,7 +680,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     state.jobs.write(job_id, result_payload)
     server_log(
         "bridge",
-        f"job done job={job_id} status={result_payload['status']} next_action={result_payload['next_action']}",
+        f"job done status={result_payload['status']} next_action={result_payload['next_action']}",
     )
 
 
@@ -686,7 +691,7 @@ def worker_loop(state: BridgeServerState) -> None:
             process_trigger(trigger, state)
         except Exception as exc:  # pragma: no cover - runtime safeguard
             job_id = str(trigger.get("job_id") or "unknown")
-            server_log("bridge", f"job exception job={job_id} error={exc}")
+            server_log("bridge", f"job exception error={exc}")
             state.jobs.write(
                 job_id,
                 {
@@ -835,7 +840,7 @@ class Handler(BaseHTTPRequestHandler):
             remote_log_on_server(
                 "LAPTOP",
                 "event",
-                f"job={job_id} type={event_type} workflow={wf} status={st} conclusion={cc} msg={msg}",
+                f"{wf} status={st} conclusion={cc} msg={msg}",
             )
 
             ack = "Qabul qilindi."
@@ -893,7 +898,7 @@ class Handler(BaseHTTPRequestHandler):
         }
         self.state.jobs.write(job_id, state_payload)
         self.state.enqueue({"task": task, "commit": commit, "job_id": job_id})
-        self._console(f"trigger queued job={job_id} task={task} commit={commit[:8]}")
+        self._console(f"trigger queued task={task} commit={commit[:8]}")
         self._json(200, {"status": "triggered", "job_id": job_id, "ack": "Trigger olindi, kutib turaman."})
 
 

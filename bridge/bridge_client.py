@@ -480,9 +480,9 @@ def send_bridge_event(
     if code == 200:
         ack = str(resp.get("ack", "")).strip()
         if ack:
-            server_log_on_client("ack", f"[{event_type}] {ack}")
+            server_log_on_client("ack", ack)
         return resp
-    client_log("bridge", f"event failed ({code}) [{event_type}]: {resp}")
+    client_log("bridge", f"event failed ({code}): {resp}")
     return None
 
 
@@ -973,7 +973,11 @@ def git_commit_if_needed(cfg: Config, message: str) -> bool:
 def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
     repo = cfg.laptop_repo_path
     variants = [
-        ["codex", "exec", "--color", "never", prompt],
+        ["codex", "exec", "-s", "danger-full-access", "-a", "never", "--color", "never", prompt],
+        ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--color", "never", prompt],
+        ["codex", "-s", "danger-full-access", "-a", "never", "--no-interactive", "-q", prompt],
+        ["codex", "-s", "danger-full-access", "-a", "never", "-q", prompt],
+        ["codex", "-s", "danger-full-access", "-a", "never", prompt],
         ["codex", "--no-interactive", "-q", prompt],
         ["codex", "-q", prompt],
         ["codex", prompt],
@@ -2089,7 +2093,7 @@ def watch_bridge_events(
                 status = event.get("status", "")
                 conclusion = event.get("conclusion", "")
                 message = event.get("message", "")
-                parts = [str(ts), str(event_type)]
+                parts = [str(ts)]
                 if workflow:
                     parts.append(str(workflow))
                 if status:
@@ -2185,7 +2189,7 @@ def run_push_ci_server_flow(
     client_log("git", f"pushed commit={commit[:12]}")
 
     ci_job_id = f"ci-{uuid.uuid4().hex}"
-    client_log("jobs", f"ci_job_id={ci_job_id}")
+    client_log("jobs", "ci watch started")
     send_bridge_event(
         cfg,
         job_id=ci_job_id,
@@ -2220,7 +2224,7 @@ def run_push_ci_server_flow(
             return summarize_result(ci_result)
 
     deploy_job_id = f"deploy-{uuid.uuid4().hex}"
-    client_log("jobs", f"deploy_job_id={deploy_job_id}")
+    client_log("jobs", "deploy stage started")
     dokploy_result = trigger_dokploy_deploy(task, commit, cfg, deploy_job_id)
     if dokploy_result is not None and dokploy_result.get("status") == "failure":
         write_last_result(dokploy_result)
@@ -2234,7 +2238,7 @@ def run_push_ci_server_flow(
         return summarize_result(runtime_result)
 
     job_id = trigger_server(task, commit, cfg, session_context=session_context)
-    client_log("jobs", f"server_job_id={job_id}")
+    client_log("jobs", "server runtime checks queued")
     ci_status_text = "completed"
     ci_conclusion = "success"
     ci_message = "GitHub CI success bo'ldi, endi server tekshiruvi boshlandi."
@@ -2255,7 +2259,7 @@ def run_push_ci_server_flow(
         status=ci_status_text,
         conclusion=ci_conclusion,
     )
-    client_log("bridge", f"triggered server checks, job_id={job_id}")
+    client_log("bridge", "triggered server checks")
 
     srv_watch_stop: Event | None = None
     srv_watch_thread: Thread | None = None
