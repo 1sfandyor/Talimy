@@ -99,7 +99,10 @@
     "password": "Password123"
   },
   "task_smoke_policy": {
-    "require_explicit_for_numbered_tasks": true
+    "require_explicit_for_numbered_tasks": true,
+    "subtask_verifier_enabled": true,
+    "subtask_verifier_min_present": 1,
+    "subtask_verifier_min_ratio": 0.5
   },
   "dynamic_smoke": {
     "enabled": true,

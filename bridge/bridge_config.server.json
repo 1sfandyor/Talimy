@@ -39,27 +39,19 @@
       { "name": "platform", "url": "https://platform.talimy.space", "expect_status": 200 }
     ]
   },
-  "post_deploy_smoke_mapping": {
-    "2.14": "schedule_feature_smoke"
-  },
-  "post_deploy_smoke_checks": {
-    "schedule_feature_smoke": [
-      "curl -fsS {{BASE_URL}}/api/health > NUL",
-      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=5'; $j = $raw | ConvertFrom-Json; if (-not $j.success) { throw 'Schedule list success=false' }\"",
-      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&dayOfWeek=monday&page=1&limit=5'; $j = $raw | ConvertFrom-Json; if (-not $j.success) { throw 'Schedule day filter success=false' }\"",
-      "powershell -NoProfile -Command \"$list = (curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=1') | ConvertFrom-Json; $rows = @(); if ($list.data -is [array]) { $rows = @($list.data) } elseif ($list.data -and $list.data.items) { $rows = @($list.data.items) }; if ($rows.Count -gt 0 -and $rows[0].id) { $item = (curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' ('{{BASE_URL}}/api/schedule/' + $rows[0].id + '?tenantId={{TENANT_ID}}')) | ConvertFrom-Json; if (-not $item.success) { throw 'Schedule get-by-id success=false' } }\""
-    ]
-  },
   "session_context": {
     "enabled": false,
     "max_messages": 12,
     "max_chars": 4000,
     "roles": ["user", "assistant"]
   },
+  "server_codex_policy_path": "server_codex_policy.md",
   "server_codex": {
     "enabled": true,
     "binary": "codex",
-    "timeout_seconds": 300
+    "timeout_seconds": 300,
+    "hello_timeout_seconds": 60,
+    "log_stream_mode": "quiet"
   },
   "task_check_mapping": {
     "2.x": "api_runtime",

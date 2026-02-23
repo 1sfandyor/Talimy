@@ -24,6 +24,7 @@ from urllib import error, parse, request
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "bridge_config.json"
 LAST_RESULT_PATH = BASE_DIR / ".bridge-state" / "last_bridge_result.json"
+LAST_TELEGRAM_STATUS = "not_sent"
 
 REJA_ROW_RE = re.compile(
     r"^\|\s*(?P<task_no>2\.\d+)\s*\|\s*(?P<title>[^|]+?)\s*\|\s*(?P<status>[^|]+?)\s*\|",
@@ -230,12 +231,16 @@ def secret_fingerprint(secret: str) -> str:
 
 def client_log(channel: str, message: str) -> None:
     channel_l = channel.lower()
+    message_l = message.lower()
     channel_color = {
         "config": "36",          # cyan
         "hello": "32",           # green
         "context": "35",         # magenta
         "git": "34",             # blue
         "jobs": "95",            # bright magenta
+        "task": "91",            # bright red
+        "stage": "31",           # red
+        "test": "94",            # bright blue
         "bridge": "37",          # white
         "server-ack": "33",      # yellow
         "watch": "90",           # bright black
@@ -246,6 +251,11 @@ def client_log(channel: str, message: str) -> None:
         channel_color = "93"     # bright yellow
     elif channel_l.startswith("timeline:"):
         channel_color = "94"     # bright blue
+    elif channel_l == "task":
+        if "implementation=present" in message_l or "result=success" in message_l:
+            channel_color = "92"  # bright green
+        elif "implementation=missing" in message_l or "result=fail" in message_l:
+            channel_color = "91"  # bright red
 
     left = ansi_color("38;5;45", "[LAPTOP]")   # turquoise
     right = ansi_color(channel_color or "37", f"[{channel}]")
@@ -443,6 +453,15 @@ def bridge_hello(cfg: Config) -> dict[str, Any]:
         cfg.shared_secret,
     )
     if code != 200:
+        if (
+            code == 503
+            and isinstance(resp, dict)
+            and "bridge-server eshitayapti" in str(resp.get("message", ""))
+            and str(resp.get("reply_source", "")).startswith("server_codex_error")
+        ):
+            # Server bridge is reachable; server-side Codex hello is temporarily unavailable
+            # (quota/usage limit/etc). Continue pipeline with a warning.
+            return resp
         raise RuntimeError(f"bridge hello failed ({code}): {resp}")
     return resp
 
@@ -569,8 +588,55 @@ def _dynamic_smoke_forbidden(command: str) -> str | None:
     return None
 
 
+def _smoke_command_label(command: str) -> str:
+    c = command.lower()
+    if "api/health" in c:
+        return "api-health"
+    if "finance/overview" in c:
+        return "finance-overview"
+    if "payments/summary" in c:
+        return "finance-payments-summary"
+    if "/api/schedule" in c or "/schedule?" in c:
+        return "schedule-list"
+    if "/classes/" in c and "/schedule" in c:
+        return "class-schedule"
+    if "convertfrom-json" in c and "report" in c:
+        return "report-json"
+    return "smoke-cmd"
+
+
+def _extract_http_status_code(*texts: str | None) -> int | None:
+    for text in texts:
+        if not text:
+            continue
+        # Prefer standalone 3-digit lines (common with curl -w "\n%{http_code}\n")
+        m = re.search(r"(?m)^\s*([1-5]\d\d)\s*$", text)
+        if m:
+            return int(m.group(1))
+        # Fallback: use the last standalone 3-digit token
+        matches = re.findall(r"(?<!\d)([1-5]\d\d)(?!\d)", text)
+        if matches:
+            return int(matches[-1])
+    return None
+
+
+def _should_parse_http_status(command: str) -> bool:
+    c = (command or "").lower()
+    # Only parse for curl-based smoke commands. Avoid false positives from lint/typecheck output.
+    return "curl" in c
+
+
+def _format_smoke_status(rc: int, http_code: int | None = None) -> str:
+    code = ansi_color("92" if rc == 0 else "91", f"rc={rc}")
+    if http_code is None:
+        return code
+    http_col = "92" if 200 <= http_code < 400 else ("93" if 400 <= http_code < 500 else "91")
+    return f"{code} {ansi_color(http_col, f'http={http_code}')}"
+
+
 def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
     diff_excerpt = _git_diff_excerpt_for_prompt(cfg, max_chars=8000) or "(git diff excerpt unavailable)"
+    expected_features = _derive_expected_features_from_subtasks(task, cfg)
     stage_rules = {
         "local_smoke": (
             "Stage = pre-push local smoke.\n"
@@ -592,11 +658,15 @@ def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
         ),
     )
     max_cmds = int(cfg.dynamic_smoke.get("max_commands", 4) or 4)
+    expected_block = ""
+    if expected_features:
+        expected_block = "Expected feature checklist (derived from Reja subtasks):\n- " + "\n- ".join(expected_features) + "\n\n"
     return (
         "You are generating smoke-check shell commands for Talimy bridge automation.\n"
         "Before deciding commands, read and follow project rules from AGENTS.md, docReja/Reja.md, and docReja/Documentation.html.\n"
         "Respect AGENTS.md strict rules (best-practice, minimal-diff, tenant isolation awareness, no shortcuts).\n\n"
         f"Task: {task}\n"
+        f"{expected_block}"
         f"{stage_rules}\n"
         "Constraints:\n"
         "- Output JSON only.\n"
@@ -694,7 +764,7 @@ def _run_command_set(
         stderr_text: str,
         stdout_text: str,
     ) -> str | None:
-        if stage not in {"post_deploy_smoke", "local_smoke"}:
+        if stage != "post_deploy_smoke":
             return None
         dyn = cfg.dynamic_smoke
         if not bool(dyn.get("enabled", False)):
@@ -777,6 +847,7 @@ def _run_command_set(
     errors: list[str] = []
     for command in commands:
         rendered = command_renderer(command) if command_renderer else command
+        test_name = _smoke_command_label(rendered)
         if stage == "post_deploy_smoke" and event_job_id:
             send_bridge_event(
                 cfg,
@@ -788,19 +859,23 @@ def _run_command_set(
                 status="in_progress",
                 message=f"Smoke cmd start: {rendered[:180]}",
             )
+        client_log("test", f"[{stage}] {ansi_color('96', test_name)} start")
         client_log("bridge", f"[{stage}] start cmd={rendered}")
         started = time.time()
         res = run_shell_or_direct(rendered, repo)
         duration = round(time.time() - started, 2)
+        http_code = _extract_http_status_code(res.stdout, res.stderr) if _should_parse_http_status(rendered) else None
         check_results.append(
             {
                 "command": rendered,
                 "returncode": res.returncode,
+                "http_status": http_code,
                 "stdout": res.stdout,
                 "stderr": res.stderr,
                 "duration_seconds": duration,
             }
         )
+        client_log("test", f"[{stage}] {ansi_color('96', test_name)} {_format_smoke_status(res.returncode, http_code)} dur={duration}s")
         client_log("bridge", f"[{stage}] done rc={res.returncode} dur={duration}s")
         if stage == "post_deploy_smoke" and event_job_id:
             send_bridge_event(
@@ -835,20 +910,24 @@ def _run_command_set(
                         message="Smoke cmd repaired by laptop Codex, retrying single command.",
                     )
                 repaired_rendered = command_renderer(repaired_command) if command_renderer else repaired_command
+                repaired_test_name = _smoke_command_label(repaired_rendered)
                 client_log("bridge", f"[{stage}] retry repaired cmd={repaired_rendered}")
                 started2 = time.time()
                 res2 = run_shell_or_direct(repaired_rendered, repo)
                 duration2 = round(time.time() - started2, 2)
+                http_code2 = _extract_http_status_code(res2.stdout, res2.stderr) if _should_parse_http_status(repaired_rendered) else None
                 check_results.append(
                     {
                         "command": repaired_rendered,
                         "returncode": res2.returncode,
+                        "http_status": http_code2,
                         "stdout": res2.stdout,
                         "stderr": res2.stderr,
                         "duration_seconds": duration2,
                         "repair_retry": True,
                     }
                 )
+                client_log("test", f"[{stage}] {ansi_color('96', repaired_test_name)}(repaired) {_format_smoke_status(res2.returncode, http_code2)} dur={duration2}s")
                 client_log("bridge", f"[{stage}] repaired cmd done rc={res2.returncode} dur={duration2}s")
                 if stage == "post_deploy_smoke" and event_job_id:
                     send_bridge_event(
@@ -923,7 +1002,538 @@ def _extract_task_no(task: str) -> str | None:
     return f"{m.group('phase')}.{m.group('task')}"
 
 
-def mark_reja_task_completed(task: str, cfg: Config) -> bool:
+def _parse_reja_task_subtasks(task: str, cfg: Config) -> list[dict[str, str]]:
+    task_no = _extract_task_no(task)
+    if not task_no:
+        return []
+    path = cfg.tasks_file
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    # Find task section by heading: "### Task X.Y:"
+    heading_re = re.compile(rf"^###\s+Task\s+{re.escape(task_no)}\s*:\s*.*$", re.MULTILINE)
+    m = heading_re.search(text)
+    if not m:
+        return []
+    start = m.end()
+    # Next task/faza heading boundary
+    next_heading = re.search(r"^###\s+(Task|FAZA)\s+.*$", text[start:], re.MULTILINE)
+    section = text[start : start + (next_heading.start() if next_heading else len(text) - start)]
+    rows: list[dict[str, str]] = []
+    for line in section.splitlines():
+        s = line.strip()
+        if not s.startswith("|"):
+            continue
+        parts = [p.strip() for p in s.strip("|").split("|")]
+        if len(parts) < 6:
+            continue
+        sub_id = parts[0]
+        work_item = parts[1]
+        acceptance = parts[5]
+        if not re.fullmatch(rf"{re.escape(task_no)}\.\d+", sub_id):
+            continue
+        if sub_id.lower() == "subtask id":
+            continue
+        rows.append({"id": sub_id, "work_item": work_item, "acceptance": acceptance})
+    return rows
+
+
+def _log_task_checklist(task: str, cfg: Config) -> None:
+    subtasks = _parse_reja_task_subtasks(task, cfg)
+    if not subtasks:
+        client_log("task", "reja_subtasks=not_found")
+        return
+    client_log("task", f"reja_subtasks=found count={len(subtasks)}")
+    for row in subtasks[:8]:
+        client_log("task", f"  {ansi_color('91', row['id'])} | {ansi_color('91', row['work_item'])}")
+    if len(subtasks) > 8:
+        client_log("task", f"  ... +{len(subtasks)-8} more")
+
+
+def _derive_expected_features_from_subtasks(task: str, cfg: Config) -> list[str]:
+    subtasks = _parse_reja_task_subtasks(task, cfg)
+    if not subtasks:
+        return []
+    features: list[str] = []
+    for row in subtasks:
+        work = row["work_item"].lower()
+        if "crud" in work:
+            features.extend(["create", "list/findAll", "get/findOne", "update", "delete"])
+        if "report" in work or "reports" in work:
+            features.append("reports")
+        if "statistic" in work:
+            features.append("statistics")
+        if "dto" in work or "dtos" in work:
+            features.append("dto validation")
+        if "by class" in work:
+            features.append("filter by class")
+        if "by teacher" in work:
+            features.append("filter by teacher")
+        if "by student" in work:
+            features.append("filter by student")
+        if "day" in work:
+            features.append("day filter")
+        if "file upload" in work:
+            features.append("file upload flow")
+        if "real-time" in work or "socket.io" in work:
+            features.append("realtime events")
+        if "invoice" in work:
+            features.append("invoice endpoints")
+        if "payment" in work:
+            features.append("payments endpoints")
+        if "overview" in work or "finance reports" in work:
+            features.append("overview/summary endpoints")
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in features:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped[:16]
+
+
+def _task_verifier_scopes(task: str, cfg: Config) -> list[Path]:
+    repo = cfg.laptop_repo_path
+    scopes: list[Path] = []
+    task_no = _extract_task_no(task) or ""
+    slug = _module_task_slug(task)
+    if task_no.startswith("2.") and slug:
+        scopes.extend(
+            [
+                repo / "apps" / "api" / "src" / "modules" / slug,
+                repo / "packages" / "shared" / "src" / "validators",
+                repo / "apps" / "api" / "src" / "app.module.ts",
+            ]
+        )
+    elif task_no.startswith("3.") or task_no.startswith("4.") or task_no.startswith("5.") or task_no.startswith("6.") or task_no.startswith("7.") or task_no.startswith("8.") or task_no.startswith("9.") or task_no.startswith("10.") or task_no.startswith("11.") or task_no.startswith("12."):
+        scopes.extend([repo / "apps" / "web", repo / "packages" / "ui", repo / "packages" / "shared"])
+    else:
+        scopes.append(repo)
+    return [p for p in scopes if p.exists()]
+
+
+def _read_scope_texts(scopes: list[Path], max_files: int = 250) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    exts = {".ts", ".tsx", ".js", ".jsx", ".json", ".md"}
+    count = 0
+    for scope in scopes:
+        if scope.is_file():
+            try:
+                out.append((str(scope).replace("\\", "/"), scope.read_text(encoding="utf-8", errors="ignore").lower()))
+                count += 1
+            except Exception:
+                pass
+            continue
+        for p in scope.rglob("*"):
+            if count >= max_files:
+                return out
+            if not p.is_file() or p.suffix.lower() not in exts:
+                continue
+            try:
+                out.append((str(p).replace("\\", "/"), p.read_text(encoding="utf-8", errors="ignore").lower()))
+                count += 1
+            except Exception:
+                continue
+    return out
+
+
+def _verify_one_subtask(work_item: str, files_text: list[tuple[str, str]]) -> tuple[bool, list[str]]:
+    w = work_item.lower()
+    reasons: list[str] = []
+    joined_paths = "\n".join(path for path, _ in files_text)
+    joined_text = "\n".join(text[:4000] for _, text in files_text[:60])
+
+    if "crud" in w:
+        crud_hits = 0
+        for token in ("@post(", "@get(", "@patch(", "@put(", "@delete("):
+            if token in joined_text:
+                crud_hits += 1
+        if crud_hits >= 3:
+            reasons.append(f"crud-decorators={crud_hits}")
+            return True, reasons
+    if "dto" in w:
+        if "/dto/" in joined_paths or ".dto.ts" in joined_paths:
+            reasons.append("dto-files-found")
+            return True, reasons
+    for kw in ("report", "reports", "statistics", "summary", "overview"):
+        if kw in w and kw in joined_text:
+            reasons.append(f"keyword:{kw}")
+            return True, reasons
+    for kw in ("class", "teacher", "student", "schedule", "finance", "invoice", "payment", "notice", "notification", "calendar", "event", "upload", "assignment", "exam", "grade", "attendance"):
+        if kw in w and (kw in joined_paths or kw in joined_text):
+            reasons.append(f"domain:{kw}")
+            # keep checking for stronger evidence but enough for heuristic
+            return True, reasons
+    # fallback token heuristic
+    tokens = [t for t in re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{3,}", w) if t not in {"create", "update", "delete", "owner", "backend", "lead", "target", "outcome", "verification", "tests", "applicable"}]
+    for t in tokens[:5]:
+        if t in joined_paths or t in joined_text:
+            reasons.append(f"token:{t}")
+            return True, reasons
+    return False, reasons
+
+
+def _run_subtask_verifier(task: str, cfg: Config) -> dict[str, Any] | None:
+    policy = cfg.task_smoke_policy
+    if policy.get("subtask_verifier_enabled") is False:
+        client_log("task", "subtask_verifier=skipped (disabled)")
+        return None
+    subtasks = _parse_reja_task_subtasks(task, cfg)
+    if not subtasks:
+        client_log("task", "subtask_verifier=skipped (no Reja subtasks found)")
+        return None
+    scopes = _task_verifier_scopes(task, cfg)
+    if not scopes:
+        client_log("task", "subtask_verifier=skipped (no scopes)")
+        return None
+    files_text = _read_scope_texts(scopes)
+    rows: list[dict[str, Any]] = []
+    present = 0
+    for row in subtasks:
+        ok, reasons = _verify_one_subtask(row["work_item"], files_text)
+        rows.append({"id": row["id"], "work_item": row["work_item"], "present": ok, "reasons": reasons})
+        mark_color = "92" if ok else "91"
+        state_text = "present" if ok else "missing"
+        client_log(
+            "task",
+            f"{ansi_color(mark_color, row['id'])} {ansi_color(mark_color, state_text)} | {ansi_color(mark_color, row['work_item'])}",
+        )
+        if ok:
+            present += 1
+    missing = len(rows) - present
+    total = max(1, len(rows))
+    ratio = present / total
+    min_present = int(policy.get("subtask_verifier_min_present", 1))
+    try:
+        min_ratio = float(policy.get("subtask_verifier_min_ratio", 0.34))
+    except Exception:
+        min_ratio = 0.34
+    min_ratio = max(0.0, min(1.0, min_ratio))
+    client_log(
+        "task",
+        f"subtask_verifier summary present={present}/{len(rows)} ratio={ratio:.0%} threshold>={min_present} and {min_ratio:.0%}",
+    )
+    if present < min_present or ratio < min_ratio:
+        result = {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": [
+                f"Task subtasks uchun local evidence threshold o'tmadi: present={present}/{len(rows)} ({ratio:.0%}), talab >= {min_present} va >= {min_ratio:.0%}.",
+            ],
+            "warnings": [],
+            "suggestions": ["Avval task subtasklarini implement qiling yoki featurega mos kod fayllarini qo'shing."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": "",
+            "stage": "subtask_verifier",
+            "subtask_verifier": {
+                "present": present,
+                "missing": missing,
+                "total": len(rows),
+                "ratio": ratio,
+                "min_present": min_present,
+                "min_ratio": min_ratio,
+                "rows": rows,
+            },
+        }
+        write_last_result(result)
+        return result
+    return {
+        "status": "success",
+        "tests_passed": True,
+        "errors": [],
+        "warnings": [],
+        "suggestions": [],
+        "next_action": "proceed",
+        "task": task,
+        "commit": "",
+        "stage": "subtask_verifier",
+        "subtask_verifier": {
+            "present": present,
+            "missing": missing,
+            "total": len(rows),
+            "ratio": ratio,
+            "min_present": min_present,
+            "min_ratio": min_ratio,
+            "rows": rows,
+        },
+    }
+
+
+def _task_title_without_number(task: str) -> str:
+    m = TASK_NUMBER_RE.search(task)
+    if not m:
+        return task.strip()
+    tail = task[m.end() :].strip(" :-\t")
+    return tail or task.strip()
+
+
+def _module_task_slug(task: str) -> str | None:
+    m = re.search(r"([A-Za-z][A-Za-z0-9_-]*)\s+Module\b", _task_title_without_number(task), re.IGNORECASE)
+    if not m:
+        return None
+    return m.group(1).lower()
+
+
+def _check_task_implementation_presence(task: str, cfg: Config) -> dict[str, Any] | None:
+    task_no = _extract_task_no(task)
+    slug = _module_task_slug(task)
+    if not task_no or not slug or not task_no.startswith("2."):
+        return None
+
+    repo = cfg.laptop_repo_path
+    module_dir = repo / "apps" / "api" / "src" / "modules" / slug
+    expected_files = [
+        module_dir / f"{slug}.module.ts",
+        module_dir / f"{slug}.controller.ts",
+        module_dir / f"{slug}.service.ts",
+    ]
+    existing = [p for p in expected_files if p.exists()]
+    if module_dir.exists() and existing:
+        def _read(p: Path) -> str:
+            try:
+                return p.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                return ""
+
+        def _has_real_service_logic(text: str) -> bool:
+            if "@Injectable" not in text:
+                return False
+            # At least one method beyond constructor suggests non-empty implementation.
+            return bool(re.search(r"(?m)^\s*(?:async\s+)?[a-zA-Z_]\w*\s*\(", text))
+
+        signals: list[str] = []
+        missing_signals: list[str] = []
+        if len(existing) == len(expected_files):
+            module_text = _read(expected_files[0])
+            controller_text = _read(expected_files[1])
+            service_text = _read(expected_files[2])
+
+            module_ok = ("@Module" in module_text) and ("controllers" in module_text or "providers" in module_text)
+            controller_ok = ("@Controller" in controller_text) and bool(
+                re.search(r"@\s*(Get|Post|Patch|Put|Delete)\s*\(", controller_text)
+            )
+            service_ok = _has_real_service_logic(service_text)
+
+            for name, ok in [("module", module_ok), ("controller", controller_ok), ("service", service_ok)]:
+                (signals if ok else missing_signals).append(name)
+
+            if module_ok and controller_ok and service_ok:
+                client_log(
+                    "task",
+                    f"implementation=present task={task_no} module={slug} files={len(existing)}/{len(expected_files)} signals=module+controller+service",
+                )
+                return None
+
+        client_log(
+            "task",
+            f"implementation=missing task={task_no} module={slug} files={len(existing)}/{len(expected_files)} missing_signals={','.join(missing_signals) or 'files'}",
+        )
+        result = {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": [
+                f"Task {task_no} uchun lokal modul skeleti topildi, lekin implementatsiya signallari yetarli emas: module={slug}.",
+            ],
+            "warnings": [
+                f"Mavjud fayllar: {len(existing)}/{len(expected_files)}",
+                *([f"Yetishmayotgan signallar: {', '.join(missing_signals)}"] if missing_signals else []),
+            ],
+            "suggestions": [
+                f"{slug} modulida kamida @Module wiring, controller route decorators va service metodlarini implement qiling.",
+            ],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": "",
+            "stage": "implementation_presence",
+        }
+        write_last_result(result)
+        return result
+
+    client_log("task", f"implementation=missing task={task_no} module={slug}")
+    result = {
+        "status": "failure",
+        "tests_passed": False,
+        "errors": [f"Task {task_no} uchun lokal modul topilmadi: apps/api/src/modules/{slug}/"],
+        "warnings": [],
+        "suggestions": [
+            f"Avval {slug} modulini implement qiling (module/controller/service + DTO/validators), keyin push qiling.",
+        ],
+        "next_action": "fix_required",
+        "task": task,
+        "commit": "",
+        "stage": "implementation_presence",
+    }
+    write_last_result(result)
+    return result
+
+
+def _run_task_implementation_verifier(task: str, cfg: Config) -> dict[str, Any] | None:
+    subtasks = _parse_reja_task_subtasks(task, cfg)
+    checklist_lines = [f"- {row['id']}: {row['work_item']}" for row in subtasks[:20]]
+    if len(subtasks) > 20:
+        checklist_lines.append(f"- ... +{len(subtasks)-20} more")
+    checklist_block = "\n".join(checklist_lines) if checklist_lines else "- (Reja subtask topilmadi)"
+    scopes = _task_verifier_scopes(task, cfg)
+    scope_block = "\n".join(f"- {str(p.relative_to(cfg.laptop_repo_path))}" if str(p).startswith(str(cfg.laptop_repo_path)) else f"- {p}" for p in scopes[:20]) if scopes else "- (scope auto-topilmadi)"
+    timeout = int(cfg.auto_fix.get("codex_timeout_seconds", 900) or 900)
+    prompt = (
+        "Talimy task implementation verifier (analysis only, NO edits).\n"
+        "AGENTS.md, docReja/Reja.md, docReja/Documentation.html qoidalarini hisobga ol.\n"
+        "Kod yozma, fayl o'zgartirma, commit qilma.\n"
+        "Repo ichida qidirib task va subtasks bo'yicha implementation holatini bahola.\n\n"
+        f"Task: {task}\n\n"
+        "Reja subtasks:\n"
+        f"{checklist_block}\n\n"
+        "Priority search scopes (hints only):\n"
+        f"{scope_block}\n\n"
+        "Baholash qoidasi:\n"
+        "- `present`: task/subtask uchun aniq kod dalili bor (route/service/dto/schema/wiring/test/smoke-level signal).\n"
+        "- `partial`: skelet yoki qisman dalil bor, lekin acceptance to'liq emas.\n"
+        "- `missing`: amaliy dalil topilmadi.\n"
+        "Har subtask uchun qisqa reason yoz.\n\n"
+        "FAQAT JSON qaytar:\n"
+        "{\n"
+        '  "status": "success" | "failure",\n'
+        '  "tests_passed": true | false,\n'
+        '  "implemented_level": "present" | "partial" | "missing",\n'
+        '  "errors": ["..."],\n'
+        '  "warnings": ["..."],\n'
+        '  "suggestions": ["..."],\n'
+        '  "next_action": "proceed" | "fix_required",\n'
+        '  "subtasks": [{"id":"2.x.y","status":"present|partial|missing","reason":"..."}]\n'
+        "}\n"
+    )
+    client_log("task", "implementation_verifier (codex) start")
+    try:
+        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+    except FileNotFoundError:
+        client_log("task", "implementation_verifier fallback (local codex CLI topilmadi)")
+        return _check_task_implementation_presence(task, cfg)
+    if res.returncode != 0:
+        err = (res.stderr or res.stdout or "").strip()
+        client_log("task", f"implementation_verifier fallback (codex rc={res.returncode})")
+        if err:
+            client_log("bridge", f"implementation_verifier codex error: {err[:240]}")
+        return _check_task_implementation_presence(task, cfg)
+
+    parsed = parse_json_object_from_text(res.stdout or "")
+    if not parsed:
+        client_log("task", "implementation_verifier fallback (invalid JSON)")
+        return _check_task_implementation_presence(task, cfg)
+
+    sub_rows = parsed.get("subtasks", [])
+    if isinstance(sub_rows, list):
+        for row in sub_rows[:30]:
+            if not isinstance(row, dict):
+                continue
+            sid = str(row.get("id", "")).strip() or "subtask"
+            st = str(row.get("status", "")).strip().lower() or "unknown"
+            reason = str(row.get("reason", "")).strip()
+            color = "92" if st == "present" else ("93" if st == "partial" else "91")
+            client_log("task", f"{ansi_color(color, sid)} {ansi_color(color, st)}{(' | ' + ansi_color(color, reason)) if reason else ''}")
+
+    impl_level = str(parsed.get("implemented_level", "")).strip().lower()
+    next_action = str(parsed.get("next_action", "")).strip()
+    if next_action not in {"proceed", "fix_required"}:
+        next_action = "proceed" if impl_level == "present" else "fix_required"
+    # Enforce bridge-wide invariant: next_action is the source of truth for final pass/fail state.
+    status = "success" if next_action == "proceed" else "failure"
+    tests_passed = next_action == "proceed"
+    warnings = [str(x) for x in parsed.get("warnings", [])] if isinstance(parsed.get("warnings"), list) else []
+    errors = [str(x) for x in parsed.get("errors", [])] if isinstance(parsed.get("errors"), list) else []
+    suggestions = [str(x) for x in parsed.get("suggestions", [])] if isinstance(parsed.get("suggestions"), list) else []
+
+    client_log(
+        "task",
+        f"implementation_verifier result level={impl_level or 'unknown'} next={next_action}",
+    )
+    result = {
+        "status": status,
+        "tests_passed": tests_passed,
+        "errors": errors,
+        "warnings": warnings,
+        "suggestions": suggestions,
+        "next_action": next_action,
+        "task": task,
+        "commit": "",
+        "stage": "implementation_verifier",
+        "implementation_verifier": {
+            "implemented_level": impl_level or ("present" if next_action == "proceed" else "partial"),
+            "subtasks": sub_rows if isinstance(sub_rows, list) else [],
+        },
+    }
+    if next_action != "proceed":
+        write_last_result(result)
+        return result
+    return None
+
+
+def _standardize_reja_evidence(task: str, cfg: Config, result: dict[str, Any] | None) -> str:
+    if not isinstance(result, dict):
+        return "-"
+    parts: list[str] = []
+    commit = str(result.get("commit", "")).strip()
+    repo = cfg.laptop_repo_path
+    if commit:
+        try:
+            files = [p.replace("\\", "/") for p in changed_files_for_commit(repo, commit)]
+        except Exception:
+            files = []
+        # Prefer feature-code files over bridge/docs noise for evidence.
+        code_files = [
+            p for p in files
+            if not (p.startswith("bridge/") or p.startswith("docReja/"))
+        ]
+        chosen = code_files or files
+        if chosen:
+            preview = ", ".join(f"`{p}`" for p in chosen[:8])
+            if len(chosen) > 8:
+                preview += ", ..."
+            parts.append(preview)
+    ci = result.get("github_ci")
+    if isinstance(ci, dict):
+        runs = ci.get("runs")
+        if isinstance(runs, list) and runs:
+            ok = 0
+            total = 0
+            for r in runs:
+                if not isinstance(r, dict):
+                    continue
+                total += 1
+                if str(r.get("conclusion", "")).lower() == "success":
+                    ok += 1
+            if total:
+                parts.append(f"CI {ok}/{total} success")
+        elif bool(ci.get("skipped_no_runs")):
+            parts.append("CI skipped (no matching workflow)")
+    checks = result.get("checks")
+    if isinstance(checks, list) and checks:
+        total = 0
+        ok = 0
+        for chk in checks:
+            if not isinstance(chk, dict):
+                continue
+            total += 1
+            if int(chk.get("returncode", 1)) == 0:
+                ok += 1
+        if total:
+            parts.append(f"runtime checks {ok}/{total} pass")
+    feature_smoke = result.get("feature_smoke")
+    if isinstance(feature_smoke, dict):
+        check_set = str(feature_smoke.get("check_set", "")).strip()
+        smoke_status = str(feature_smoke.get("status", "")).strip().lower()
+        if check_set or smoke_status:
+            if smoke_status:
+                parts.append(f"feature smoke {check_set or 'set'} {smoke_status}")
+            else:
+                parts.append(f"feature smoke {check_set}")
+    if not parts:
+        return "-"
+    return "; ".join(parts)
+
+
+def mark_reja_task_completed(task: str, cfg: Config, result: dict[str, Any] | None = None) -> bool:
     mark_cfg = cfg.reja_auto_mark
     if not bool(mark_cfg.get("enabled", False)):
         return False
@@ -938,13 +1548,21 @@ def mark_reja_task_completed(task: str, cfg: Config) -> bool:
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     changed = False
     out_lines: list[str] = []
-    row_re = re.compile(rf"^(\|\s*{re.escape(task_no)}\s*\|\s*[^|]+\|\s*)([^|]+?)(\s*\|\s*)([^|]+?)(\s*\|.*)$")
+    evidence = _standardize_reja_evidence(task, cfg, result)
+    row_re = re.compile(
+        rf"^(\|\s*{re.escape(task_no)}\s*\|\s*[^|]+\|\s*)([^|]+?)(\s*\|\s*)([^|]+?)(\s*\|\s*)([^|]*?)(\s*\|.*)$"
+    )
     for line in lines:
         m = row_re.match(line)
         if not m:
             out_lines.append(line)
             continue
-        new_line = f"{m.group(1)}\U0001F7E2 Completed{m.group(3)}{target_date}{m.group(5)}"
+        new_line = (
+            f"{m.group(1)}\U0001F7E2 Completed"
+            f"{m.group(3)}{target_date}"
+            f"{m.group(5)}{evidence}"
+            f"{m.group(7)}"
+        )
         out_lines.append(new_line)
         changed = changed or (new_line != line)
     if not changed:
@@ -1035,6 +1653,66 @@ def _git_diff_stat(cfg: Config, max_lines: int = 20) -> list[str]:
     return lines[:max_lines]
 
 
+def _git_status_paths(cfg: Config) -> list[str]:
+    entries = _git_status_short(cfg)
+    paths: list[str] = []
+    for line in entries:
+        # porcelain short format: XY <path> or XY <old> -> <new>
+        body = line[3:] if len(line) >= 4 else line
+        body = body.strip()
+        if not body:
+            continue
+        if " -> " in body:
+            body = body.split(" -> ", 1)[1].strip()
+        paths.append(body.replace("\\", "/"))
+    return paths
+
+
+def _task_autofix_allowed_paths(task: str, stage: str) -> list[str]:
+    task_no = _extract_task_no(task) or ""
+    slug = _module_task_slug(task)
+    allowed: list[str] = []
+    if task_no.startswith("2.") and slug:
+        allowed.extend(
+            [
+                f"apps/api/src/modules/{slug}/",
+                f"packages/shared/src/validators/{slug}.schema.ts",
+                # common singularized validator names (assignments->assignment, notices->notice, notifications->notification)
+                f"packages/shared/src/validators/{slug.rstrip('s')}.schema.ts",
+                "packages/shared/src/validators/index.ts",
+                "apps/api/src/app.module.ts",
+            ]
+        )
+    if stage in {"implementation_verifier", "local_smoke"}:
+        # No docs/bridge edits should be auto-committed while implementing task code.
+        return [p for p in allowed if p]
+    # For bridge-stage failures, allow bridge files too.
+    if stage.startswith("bridge") or "smoke" in stage:
+        allowed.extend(["bridge/", "docReja/Reja.md"])
+    return [p for p in allowed if p]
+
+
+def _paths_outside_allowlist(paths: list[str], allowlist: list[str]) -> list[str]:
+    if not allowlist:
+        return []
+    outside: list[str] = []
+    for path in paths:
+        norm = path.replace("\\", "/")
+        ok = False
+        for allow in allowlist:
+            a = allow.replace("\\", "/")
+            if a.endswith("/"):
+                if norm.startswith(a):
+                    ok = True
+                    break
+            elif norm == a:
+                ok = True
+                break
+        if not ok:
+            outside.append(norm)
+    return outside
+
+
 def _auto_fix_target_hints(task: str, stage: str, failure_result: dict[str, Any]) -> list[str]:
     texts: list[str] = [task, stage]
     for key in ("errors", "warnings", "suggestions"):
@@ -1112,6 +1790,7 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
     warnings = [str(x) for x in failure_result.get("warnings", [])][:5]
     suggestions = [str(x) for x in failure_result.get("suggestions", [])][:5]
     target_hints = _auto_fix_target_hints(task, stage, failure_result)
+    reja_subtasks = _parse_reja_task_subtasks(task, cfg)
     target_block = ""
     if target_hints:
         target_block = (
@@ -1119,6 +1798,14 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
             + "\n- ".join(target_hints)
             + "\n\n"
         )
+    reja_block = ""
+    if reja_subtasks:
+        checklist_lines = []
+        for row in reja_subtasks[:10]:
+            checklist_lines.append(f"- {row['id']}: {row['work_item']} | Acceptance: {row['acceptance']}")
+        if len(reja_subtasks) > 10:
+            checklist_lines.append(f"- ... +{len(reja_subtasks)-10} more subtasks")
+        reja_block = "Reja task subtasks (expected outcomes/checklist):\n" + "\n".join(checklist_lines) + "\n\n"
 
     prompt = (
         f"Talimy bridge auto-fix cycle. Task: {task}\n"
@@ -1130,6 +1817,7 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         "- AGENTS.md ni o'qi va qat'iy amal qil.\n"
         "- docReja/Reja.md va docReja/Documentation.html kontekstini hisobga ol.\n"
         "- Best-practice first, temporary workaround qilma.\n\n"
+        f"{reja_block}"
         f"{target_block}"
         "Qilish kerak:\n"
         "1. Xatoni tuzat (minimal-diff, best-practice)\n"
@@ -1139,11 +1827,23 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         "5. FAQAT qisqa yakun yoz: nima tuzatding\n"
     )
     client_log("bridge", f"auto-fix start attempt={attempt + 1}/{max_retries} stage={stage}")
+    head_before = current_commit(cfg.laptop_repo_path)
     before_status = _git_status_short(cfg)
+    before_paths = _git_status_paths(cfg)
+    allowlist = _task_autofix_allowed_paths(task, stage)
+    if allowlist:
+        client_log("bridge", f"auto-fix scope={', '.join(allowlist[:6])}{' ...' if len(allowlist) > 6 else ''}")
+    outside_before = _paths_outside_allowlist(before_paths, allowlist) if before_paths and allowlist else []
     if before_status:
         client_log("bridge", f"auto-fix pre-status entries={len(before_status)}")
     else:
         client_log("bridge", "auto-fix pre-status clean")
+    if outside_before:
+        preview = ", ".join(outside_before[:8])
+        if len(outside_before) > 8:
+            preview += ", ..."
+        client_log("bridge", f"auto-fix blocked: unrelated dirty files present [{preview}]")
+        return False
     try:
         res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
     except FileNotFoundError:
@@ -1154,8 +1854,13 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         client_log("bridge", f"auto-fix codex failed rc={res.returncode} {err[:240]}")
         return False
     after_status = _git_status_short(cfg)
+    after_paths = _git_status_paths(cfg)
     changed_files = _git_changed_files(cfg)
     diff_stat = _git_diff_stat(cfg)
+    head_after = current_commit(cfg.laptop_repo_path)
+    committed_files: list[str] = []
+    if head_after != head_before:
+        committed_files = [p.replace("\\", "/") for p in changed_files_for_commit(cfg.laptop_repo_path, head_after)]
     if changed_files:
         preview = ", ".join(changed_files[:8])
         if len(changed_files) > 8:
@@ -1171,6 +1876,30 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         client_log("bridge", f"auto-fix post-status entries={len(after_status)}")
     else:
         client_log("bridge", "auto-fix post-status clean")
+    if head_after != head_before:
+        mode = "edit+commit"
+        client_log("bridge", f"auto-fix mode={mode} commit={head_after[:8]}")
+        if committed_files:
+            preview = ", ".join(committed_files[:8])
+            if len(committed_files) > 8:
+                preview += ", ..."
+            client_log("bridge", f"auto-fix committed_files={len(committed_files)} [{preview}]")
+            outside_commit = _paths_outside_allowlist(committed_files, allowlist) if allowlist else []
+            if outside_commit:
+                p = ", ".join(outside_commit[:8])
+                if len(outside_commit) > 8:
+                    p += ", ..."
+                client_log("bridge", f"auto-fix warning: commit scope outside task [{p}]")
+    else:
+        mode = "analysis-only" if not changed_files and not after_status else "edit-no-commit"
+        client_log("bridge", f"auto-fix mode={mode}")
+    outside_after = _paths_outside_allowlist(after_paths, allowlist) if after_paths and allowlist else []
+    if outside_after:
+        preview = ", ".join(outside_after[:8])
+        if len(outside_after) > 8:
+            preview += ", ..."
+        client_log("bridge", f"auto-fix blocked: unrelated dirty files after run [{preview}]")
+        return False
     summary = (res.stdout or "").strip().splitlines()
     if summary:
         client_log("bridge", f"auto-fix summary: {summary[-1][:240]}")
@@ -2215,13 +2944,18 @@ def watch_bridge_events(
 
 
 def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
+    global LAST_TELEGRAM_STATUS
     tg = cfg.telegram
     if not bool(tg.get("enabled", False)):
+        LAST_TELEGRAM_STATUS = "skipped_disabled"
+        client_log("telegram", "skip (disabled)")
         return
 
     bot_token = str(tg.get("bot_token", "")).strip()
     chat_id = str(tg.get("chat_id", "")).strip()
     if not bot_token or not chat_id:
+        LAST_TELEGRAM_STATUS = "skipped_missing_config"
+        client_log("telegram", "skip (missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID)")
         return
 
     status = str(result.get("status", "unknown")).upper()
@@ -2249,8 +2983,148 @@ def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
         http_json("POST", url, payload, cfg.request_timeout_seconds, token="")
-    except Exception:
+        LAST_TELEGRAM_STATUS = f"sent_{status.lower()}"
+        client_log("telegram", f"sent ({status})")
+    except Exception as exc:
+        LAST_TELEGRAM_STATUS = "send_failed"
+        client_log("telegram", f"send failed: {exc}")
         return
+
+
+def _telegram_enabled_config(cfg: Config) -> tuple[bool, str, str]:
+    tg = cfg.telegram
+    enabled = bool(tg.get("enabled", False))
+    bot_token = str(tg.get("bot_token", "")).strip()
+    chat_id = str(tg.get("chat_id", "")).strip()
+    return enabled, bot_token, chat_id
+
+
+def _telegram_get_updates(bot_token: str, *, offset: int | None, timeout_s: int, request_timeout: int) -> dict[str, Any]:
+    params = [f"timeout={max(0, timeout_s)}"]
+    if offset is not None:
+        params.append(f"offset={offset}")
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates?{'&'.join(params)}"
+    req = request.Request(url, method="GET")
+    with request.urlopen(req, timeout=request_timeout) as resp:
+        body = resp.read().decode("utf-8", errors="replace")
+        return json.loads(body) if body else {"ok": False, "result": []}
+
+
+def prompt_continue_next_task(cfg: Config, *, task: str = "") -> bool:
+    enabled, bot_token, chat_id = _telegram_enabled_config(cfg)
+    if enabled and bot_token and chat_id:
+        try:
+            # Baseline offset so old updates are ignored.
+            baseline = _telegram_get_updates(bot_token, offset=None, timeout_s=0, request_timeout=cfg.request_timeout_seconds)
+            offset: int | None = None
+            if bool(baseline.get("ok")) and isinstance(baseline.get("result"), list):
+                ids = [int(x.get("update_id")) for x in baseline["result"] if isinstance(x, dict) and str(x.get("update_id", "")).isdigit()]
+                if ids:
+                    offset = max(ids) + 1
+
+            nonce = uuid.uuid4().hex[:12]
+            yes_data = f"bridge_next_yes:{nonce}"
+            no_data = f"bridge_next_no:{nonce}"
+            title = "Keyingi taskga o'taymi?"
+            if task:
+                title = f"Task tugadi: {task}\nKeyingi taskga o'taymi?"
+            payload = {
+                "chat_id": chat_id,
+                "text": title,
+                "reply_markup": {
+                    "inline_keyboard": [[
+                        {"text": "Ha bajar", "callback_data": yes_data},
+                        {"text": "Yo'q meni kut", "callback_data": no_data},
+                    ]]
+                },
+            }
+            code, resp = http_json(
+                "POST",
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                payload,
+                cfg.request_timeout_seconds,
+                token="",
+            )
+            if code >= 400 or not bool(resp.get("ok", True)):
+                raise RuntimeError(f"sendMessage failed ({code}): {resp}")
+            msg_obj = resp.get("result", {}) if isinstance(resp, dict) else {}
+            message_id = int(msg_obj.get("message_id", 0)) if str(msg_obj.get("message_id", "")).isdigit() else 0
+            client_log("telegram", "awaiting button response (Ha bajar / Yo'q meni kut)")
+
+            poll_total = int(cfg.telegram.get("next_task_prompt_timeout_seconds", 900) or 900)
+            started = time.time()
+            while time.time() - started < poll_total:
+                left = int(poll_total - (time.time() - started))
+                batch_timeout = min(25, max(1, left))
+                updates = _telegram_get_updates(
+                    bot_token,
+                    offset=offset,
+                    timeout_s=batch_timeout,
+                    request_timeout=max(cfg.request_timeout_seconds, batch_timeout + 5),
+                )
+                if not bool(updates.get("ok")):
+                    continue
+                for upd in updates.get("result", []) or []:
+                    if not isinstance(upd, dict):
+                        continue
+                    uid = upd.get("update_id")
+                    if isinstance(uid, int):
+                        offset = uid + 1
+                    cq = upd.get("callback_query")
+                    if not isinstance(cq, dict):
+                        continue
+                    data = str(cq.get("data", ""))
+                    msg = cq.get("message") if isinstance(cq.get("message"), dict) else {}
+                    cq_chat_id = str(((msg or {}).get("chat", {}) or {}).get("id", ""))
+                    cq_msg_id = int(msg.get("message_id", 0)) if str(msg.get("message_id", "")).isdigit() else 0
+                    if cq_chat_id != chat_id:
+                        continue
+                    if message_id and cq_msg_id and cq_msg_id != message_id:
+                        continue
+                    if data not in {yes_data, no_data}:
+                        continue
+                    cq_id = str(cq.get("id", "")).strip()
+                    if cq_id:
+                        try:
+                            http_json(
+                                "POST",
+                                f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+                                {"callback_query_id": cq_id, "text": "Qabul qilindi"},
+                                cfg.request_timeout_seconds,
+                                token="",
+                            )
+                        except Exception:
+                            pass
+                    try:
+                        http_json(
+                            "POST",
+                            f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup",
+                            {"chat_id": chat_id, "message_id": cq_msg_id or message_id, "reply_markup": {"inline_keyboard": []}},
+                            cfg.request_timeout_seconds,
+                            token="",
+                        )
+                    except Exception:
+                        pass
+                    if data == yes_data:
+                        client_log("prompt", "Telegram javobi: Ha bajar")
+                        return True
+                    client_log("prompt", "Telegram javobi: Yo'q meni kut")
+                    return False
+
+            client_log("telegram", "next-task prompt timeout; terminal prompt fallback")
+        except Exception as exc:
+            client_log("telegram", f"next-task prompt failed; terminal fallback: {exc}")
+
+    while True:
+        try:
+            answer = input("\n[LAPTOP][prompt] Keyingi taskga o'taymi? (y/n): ").strip().lower()
+        except EOFError:
+            return False
+        if answer in {"y", "yes", "ha", "h"}:
+            return True
+        if answer in {"n", "no", "yoq", "yo'q", "q", "quit", ""}:
+            return False
+        client_log("prompt", "Noto'g'ri javob. 'y' yoki 'n' kiriting.")
 
 
 def run_push_ci_server_flow(
@@ -2261,11 +3135,24 @@ def run_push_ci_server_flow(
     session_id_override: str | None = None,
     disable_session_context: bool = False,
 ) -> int:
+    client_log("task", f"pipeline start: {ansi_color('91', task)}")
+    _log_task_checklist(task, cfg)
+    impl_presence = _run_task_implementation_verifier(task, cfg)
+    if impl_presence is not None:
+        send_telegram_notification(impl_presence, cfg)
+        return summarize_result(impl_presence)
+    subtask_verify = _run_subtask_verifier(task, cfg)
+    if subtask_verify is not None and str(subtask_verify.get("next_action", "proceed")) != "proceed":
+        send_telegram_notification(subtask_verify, cfg)
+        return summarize_result(subtask_verify)
+
+    client_log("stage", "local_smoke")
     smoke_result = run_local_task_smoke(task, cfg)
     if smoke_result is not None and smoke_result.get("next_action") != "proceed":
         send_telegram_notification(smoke_result, cfg)
         return summarize_result(smoke_result)
 
+    client_log("stage", "bridge_hello")
     hello = bridge_hello(cfg)
     hello_reply = str(hello.get("reply") or "").strip()
     hello_src = str(hello.get("reply_source") or "").strip()
@@ -2278,6 +3165,8 @@ def run_push_ci_server_flow(
             server_log_on_client("bridge", f"hello reply source={hello_src} | {hello_reply}")
     else:
         client_log("hello", str(msg))
+    if hello_src == "server_codex_error":
+        client_log("hello", "server codex hello unavailable; bridge server reachable, davom etiladi")
     session_context = build_session_context_excerpt(
         cfg,
         session_id_override=session_id_override,
@@ -2285,6 +3174,7 @@ def run_push_ci_server_flow(
     )
     if session_context and session_context.get("excerpt"):
         client_log("context", f"session context loaded ({session_context.get('message_count', 0)} messages)")
+    client_log("stage", "git_push")
     commit = push_commit(cfg)
     client_log("git", f"pushed commit={commit[:12]}")
 
@@ -2311,6 +3201,7 @@ def run_push_ci_server_flow(
         )
         ci_watch_thread.start()
 
+    client_log("stage", "github_ci")
     ci_result = wait_for_github_ci(commit, task, cfg, ci_job_id)
     if ci_watch_stop is not None:
         ci_watch_stop.set()
@@ -2325,18 +3216,33 @@ def run_push_ci_server_flow(
 
     deploy_job_id = f"deploy-{uuid.uuid4().hex}"
     client_log("jobs", "deploy stage started")
+    client_log("stage", "dokploy_deploy")
     dokploy_result = trigger_dokploy_deploy(task, commit, cfg, deploy_job_id)
     if dokploy_result is not None and dokploy_result.get("status") == "failure":
         write_last_result(dokploy_result)
         send_telegram_notification(dokploy_result, cfg)
         return summarize_result(dokploy_result)
 
+    client_log("stage", "runtime_health")
     runtime_result = run_runtime_health_checks(task, commit, cfg, deploy_job_id)
     if runtime_result is not None and runtime_result.get("status") == "failure":
         write_last_result(runtime_result)
         send_telegram_notification(runtime_result, cfg)
         return summarize_result(runtime_result)
 
+    # Run feature smoke after deploy/runtime health, before server runtime/Codex review,
+    # so server review sees a more final event timeline.
+    feature_job_id = f"feature-{uuid.uuid4().hex}"
+    client_log("stage", "post_deploy_smoke")
+    feature_smoke_result = run_post_deploy_feature_smoke(task, commit, cfg, feature_job_id)
+    if feature_smoke_result is not None:
+        if ci_result is not None:
+            feature_smoke_result["github_ci"] = ci_result.get("github_ci", {})
+        if feature_smoke_result.get("next_action") != "proceed":
+            send_telegram_notification(feature_smoke_result, cfg)
+            return summarize_result(feature_smoke_result)
+
+    client_log("stage", "server_runtime_review")
     job_id = trigger_server(task, commit, cfg, session_context=session_context)
     client_log("jobs", "server runtime checks queued")
     ci_status_text = "completed"
@@ -2397,20 +3303,22 @@ def run_push_ci_server_flow(
 
     if ci_result is not None:
         result["github_ci"] = ci_result.get("github_ci", {})
-        write_last_result(result)
-    if result.get("next_action") == "proceed":
-        feature_smoke_result = run_post_deploy_feature_smoke(task, commit, cfg, job_id)
-        if feature_smoke_result is not None:
-            if ci_result is not None:
-                feature_smoke_result["github_ci"] = ci_result.get("github_ci", {})
-            send_telegram_notification(feature_smoke_result, cfg)
-            return summarize_result(feature_smoke_result)
+    if feature_smoke_result is not None:
+        result["feature_smoke"] = feature_smoke_result.get("post_deploy_smoke", {})
+        for key in ("warnings", "suggestions"):
+            merged = [str(x) for x in result.get(key, [])]
+            for item in feature_smoke_result.get(key, []):
+                s = str(item)
+                if s not in merged:
+                    merged.append(s)
+            result[key] = merged
+    write_last_result(result)
     send_telegram_notification(result, cfg)
     return summarize_result(result)
 
 
-def _maybe_mark_reja_and_push(task: str, cfg: Config) -> None:
-    if not mark_reja_task_completed(task, cfg):
+def _maybe_mark_reja_and_push(task: str, cfg: Config, result: dict[str, Any] | None = None) -> None:
+    if not mark_reja_task_completed(task, cfg, result):
         return
     task_no = _extract_task_no(task) or "task"
     msg = f"docs(reja): mark {task_no} completed"
@@ -2446,7 +3354,8 @@ def run_task_pipeline_with_retries(
             disable_session_context=disable_session_context,
         )
         if rc == 0:
-            _maybe_mark_reja_and_push(task, current_cfg)
+            client_log("task", "pipeline result=SUCCESS")
+            _maybe_mark_reja_and_push(task, current_cfg, final_result)
             return 0
 
         failure_result = read_last_result() or {
@@ -2456,6 +3365,10 @@ def run_task_pipeline_with_retries(
             "errors": ["Bridge flow failed but no structured result file found."],
             "stage": "bridge_client",
         }
+        client_log(
+            "task",
+            f"pipeline result=FAIL stage={failure_result.get('stage','unknown')} next={failure_result.get('next_action','')}",
+        )
         if not maybe_auto_fix_failure(task, current_cfg, failure_result, attempt):
             return rc
 
@@ -2606,19 +3519,27 @@ def main() -> int:
         return watch_bridge_events(sys.argv[2], cfg)
 
     if cmd == "bridge-push-next":
-        nxt = next_reja_task(cfg.tasks_file)
-        if not nxt:
-            print("No not-started task found")
-            return 1
-        task_no, title = nxt
-        task = f"{task_no} {title}"
-        print(f"[bridge-client] next task selected: {task}")
         try:
             flags = parse_common_push_flags(sys.argv[2:])
         except ValueError as exc:
             print(str(exc))
             return 1
-        return run_task_pipeline_with_retries(task, cfg, **flags)
+        while True:
+            current_cfg = load_config()
+            nxt = next_reja_task(current_cfg.tasks_file)
+            if not nxt:
+                print("No not-started task found")
+                return 0
+            task_no, title = nxt
+            task = f"{task_no} {title}"
+            print(f"[bridge-client] next task selected: {task}")
+            rc = run_task_pipeline_with_retries(task, current_cfg, **flags)
+            if rc != 0:
+                return rc
+            client_log("bridge", f"Task success. Telegram status: {LAST_TELEGRAM_STATUS}")
+            if not prompt_continue_next_task(current_cfg, task=task):
+                client_log("bridge", "Foydalanuvchi javobi bo'yicha to'xtatildi.")
+                return 0
 
     return usage()
 
