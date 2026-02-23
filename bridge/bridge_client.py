@@ -2752,6 +2752,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
 
     timeout_seconds = int(ci_cfg.get("timeout_seconds", 1800))
     interval_seconds = int(ci_cfg.get("poll_interval_seconds", cfg.poll_interval_seconds))
+    max_transient_errors = int(ci_cfg.get("max_transient_errors", 6))
     no_run_grace_seconds = int(ci_cfg.get("no_run_grace_seconds", 45))
     require_runs = bool(ci_cfg.get("require_runs", False))
     watch_workflows = {str(x).strip() for x in ci_cfg.get("workflows", []) if str(x).strip()}
@@ -2824,6 +2825,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
     dots = 0
     last_runs: list[dict[str, Any]] = []
     announced_states: dict[str, str] = {}
+    transient_errors = 0
     while time.time() - started < timeout_seconds:
         cmd = [
             "gh",
@@ -2856,10 +2858,33 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
                 "stage": "github_ci",
             }
         if res.returncode != 0:
+            err_text = (res.stderr.strip() or res.stdout.strip())
+            err_l = err_text.lower()
+            is_transient = any(
+                token in err_l
+                for token in (
+                    "error connecting to api.github.com",
+                    "could not resolve host",
+                    "connection reset",
+                    "timeout",
+                    "tls handshake timeout",
+                    "temporary failure",
+                    "i/o timeout",
+                )
+            )
+            if is_transient:
+                transient_errors += 1
+                client_log(
+                    "bridge",
+                    f"github_ci transient gh error {transient_errors}/{max_transient_errors}: {err_text[:180]}",
+                )
+                if transient_errors <= max_transient_errors:
+                    time.sleep(interval_seconds)
+                    continue
             return {
                 "status": "failure",
                 "tests_passed": False,
-                "errors": ["GitHub CI holatini olishda xato (gh run list).", res.stderr.strip() or res.stdout.strip()],
+                "errors": ["GitHub CI holatini olishda xato (gh run list).", err_text],
                 "warnings": [],
                 "suggestions": ["Laptopda gh CLI login/auth ni tekshiring: gh auth status"],
                 "next_action": "fix_required",
@@ -2867,6 +2892,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
                 "commit": commit,
                 "stage": "github_ci",
             }
+        transient_errors = 0
 
         try:
             runs = json.loads(res.stdout or "[]")
