@@ -138,7 +138,62 @@ def trigger_server(task: str, commit: str, cfg: Config) -> str:
     )
     if code != 200:
         raise RuntimeError(f"bridge trigger failed ({code}): {resp}")
+    if resp.get("ack"):
+        print(f"[bridge-server] {resp['ack']}")
     return job_id
+
+
+def bridge_hello(cfg: Config) -> dict[str, Any]:
+    server = f"http://{cfg.server_host}:{cfg.bridge_port}"
+    code, resp = http_json(
+        "GET",
+        f"{server}/hello?side=laptop",
+        None,
+        cfg.request_timeout_seconds,
+        cfg.shared_secret,
+    )
+    if code != 200:
+        raise RuntimeError(f"bridge hello failed ({code}): {resp}")
+    return resp
+
+
+def send_bridge_event(
+    cfg: Config,
+    *,
+    job_id: str,
+    event_type: str,
+    task: str,
+    commit: str,
+    message: str,
+    workflow: str = "",
+    status: str = "",
+    conclusion: str = "",
+) -> dict[str, Any] | None:
+    server = f"http://{cfg.server_host}:{cfg.bridge_port}"
+    code, resp = http_json(
+        "POST",
+        f"{server}/event",
+        {
+            "job_id": job_id,
+            "event_type": event_type,
+            "task": task,
+            "commit": commit,
+            "message": message,
+            "workflow": workflow,
+            "status": status,
+            "conclusion": conclusion,
+            "timestamp": int(time.time()),
+        },
+        cfg.request_timeout_seconds,
+        cfg.shared_secret,
+    )
+    if code == 200:
+        ack = str(resp.get("ack", "")).strip()
+        if ack:
+            print(f"[bridge-server] {ack}")
+        return resp
+    print(f"[bridge-client] bridge event failed ({code}): {resp}")
+    return None
 
 
 def repo_slug_from_git_remote(repo: Path) -> str | None:
@@ -160,7 +215,7 @@ def write_last_result(payload: dict[str, Any]) -> None:
     LAST_RESULT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def wait_for_github_ci(commit: str, task: str, cfg: Config) -> dict[str, Any] | None:
+def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
     ci_cfg = cfg.github_ci
     if not bool(ci_cfg.get("enabled", False)):
         return None
@@ -187,6 +242,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config) -> dict[str, Any] | 
     started = time.time()
     dots = 0
     last_runs: list[dict[str, Any]] = []
+    announced_states: dict[str, str] = {}
 
     while time.time() - started < timeout_seconds:
         cmd = [
@@ -224,6 +280,35 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config) -> dict[str, Any] | 
         if watch_workflows:
             runs = [r for r in runs if str(r.get("workflowName", "")) in watch_workflows]
         last_runs = runs
+
+        for run in runs:
+            run_id = str(run.get("databaseId", ""))
+            workflow = str(run.get("workflowName", ""))
+            status = str(run.get("status", ""))
+            conclusion = str(run.get("conclusion", ""))
+            signature = f"{status}|{conclusion}"
+            if announced_states.get(run_id) == signature:
+                continue
+            announced_states[run_id] = signature
+
+            if status != "completed":
+                msg = f"{workflow} holati: {status}"
+            elif str(conclusion).lower() == "success":
+                msg = f"{workflow} success bo'ldi"
+            else:
+                msg = f"{workflow} xato bo'ldi, men uni tuzatib senga qayta yuboraman"
+
+            send_bridge_event(
+                cfg,
+                job_id=job_id,
+                event_type="ci_status",
+                task=task,
+                commit=commit,
+                message=msg,
+                workflow=workflow,
+                status=status,
+                conclusion=conclusion,
+            )
 
         if runs:
             pending = [r for r in runs if str(r.get("status", "")) != "completed"]
@@ -348,10 +433,22 @@ def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
 
 
 def run_push_ci_server_flow(task: str, cfg: Config) -> int:
+    hello = bridge_hello(cfg)
+    print(f"[bridge-client] hello: {hello.get('message', 'ok')}")
     commit = push_commit(cfg)
     print(f"[bridge-client] pushed commit={commit[:12]}")
 
-    ci_result = wait_for_github_ci(commit, task, cfg)
+    ci_job_id = f"ci-{uuid.uuid4().hex}"
+    send_bridge_event(
+        cfg,
+        job_id=ci_job_id,
+        event_type="hello",
+        task=task,
+        commit=commit,
+        message="Laptop Codex bridge ulandi, CI ni kuzatishni boshlayman.",
+    )
+
+    ci_result = wait_for_github_ci(commit, task, cfg, ci_job_id)
     if ci_result is not None:
         print("")
         if ci_result.get("next_action") != "proceed":
@@ -360,6 +457,17 @@ def run_push_ci_server_flow(task: str, cfg: Config) -> int:
             return summarize_result(ci_result)
 
     job_id = trigger_server(task, commit, cfg)
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="ci_status",
+        task=task,
+        commit=commit,
+        message="GitHub CI success bo'ldi, endi server tekshiruvi boshlandi.",
+        workflow="GitHub Actions",
+        status="completed",
+        conclusion="success",
+    )
     print(f"[bridge-client] triggered server checks, job_id={job_id}")
     result = wait_for_result(job_id, cfg)
     if result is None:
@@ -429,6 +537,7 @@ def next_reja_task(tasks_file: Path) -> tuple[str, str] | None:
 
 def usage() -> int:
     print("Usage:")
+    print("  python bridge/bridge_client.py hello")
     print("  python bridge/bridge_client.py push \"task description\"")
     print("  python bridge/bridge_client.py wait <job_id>")
     print("  python bridge/bridge_client.py next-task")
@@ -442,6 +551,11 @@ def main() -> int:
         return usage()
 
     cmd = sys.argv[1]
+    if cmd == "hello":
+        resp = bridge_hello(cfg)
+        print(json.dumps(resp, indent=2))
+        return 0
+
     if cmd == "next-task":
         nxt = next_reja_task(cfg.tasks_file)
         if not nxt:

@@ -44,6 +44,12 @@ Prerequisite:
 
 - `gh` CLI o'rnatilgan va login qilingan (`gh auth status`)
 
+Bridge salomlashish testi:
+
+```bash
+python bridge/bridge_client.py hello
+```
+
 Manual task:
 
 ```bash
@@ -82,6 +88,11 @@ Server `/result?job_id=...` endpoint JSON qaytaradi:
 3. CI success bo'lsa bridge server trigger
 4. Server deterministic checks + optional server Codex review
 5. Telegram notify (yoqilgan bo'lsa)
+
+CI polling paytida client har workflow status o'zgarishini (`queued/in_progress/completed`) serverga event qilib yuboradi va server `ack` qaytaradi:
+
+- success: `... success bo'ldi, kutib turaman`
+- failure: `... xato bo'ldi, tuzatib qayta yuboring`
 
 ## 5) Tavsiya etiladigan server check mapping
 

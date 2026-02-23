@@ -26,6 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "bridge_config.json"
 STATE_DIR = BASE_DIR / ".bridge-state"
 RESULTS_DIR = STATE_DIR / "results"
+EVENTS_DIR = STATE_DIR / "events"
 
 
 @dataclass
@@ -84,10 +85,25 @@ class JsonStore:
             return json.loads(path.read_text(encoding="utf-8"))
 
 
+class EventStore:
+    def __init__(self, events_dir: Path) -> None:
+        self.events_dir = events_dir
+        self.events_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+
+    def append(self, job_id: str, payload: dict[str, Any]) -> None:
+        path = self.events_dir / f"{job_id}.jsonl"
+        line = json.dumps(payload, ensure_ascii=True)
+        with self._lock:
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+
+
 class BridgeServerState:
     def __init__(self, config: BridgeConfig) -> None:
         self.config = config
         self.jobs = JsonStore(RESULTS_DIR)
+        self.events = EventStore(EVENTS_DIR)
         self.q: queue.Queue[dict[str, Any]] = queue.Queue()
 
     def enqueue(self, payload: dict[str, Any]) -> None:
@@ -358,6 +374,20 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"status": "ok"})
             return
 
+        if parsed.path == "/hello":
+            params = parse_qs(parsed.query)
+            side = (params.get("side") or ["unknown"])[0]
+            self._json(
+                200,
+                {
+                    "status": "ok",
+                    "message": f"bridge-server eshitayapti ({side})",
+                    "reply": "Yaxshi, kutib turaman.",
+                    "server_time": int(time.time()),
+                },
+            )
+            return
+
         if not self._authorized():
             self._json(401, {"status": "unauthorized"})
             return
@@ -381,7 +411,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._json(401, {"status": "unauthorized"})
             return
-        if self.path != "/trigger":
+        if self.path not in ("/trigger", "/event"):
             self._json(404, {"status": "not_found"})
             return
 
@@ -390,6 +420,38 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
         except Exception as exc:
             self._json(400, {"status": "error", "message": f"invalid json: {exc}"})
+            return
+
+        if self.path == "/event":
+            job_id = str(payload.get("job_id") or "no-job").strip()
+            event_type = str(payload.get("event_type") or "event").strip()
+            event_payload = {
+                "job_id": job_id,
+                "event_type": event_type,
+                "message": str(payload.get("message") or "").strip(),
+                "commit": str(payload.get("commit") or "").strip(),
+                "task": str(payload.get("task") or "").strip(),
+                "workflow": str(payload.get("workflow") or "").strip(),
+                "status": str(payload.get("status") or "").strip(),
+                "conclusion": str(payload.get("conclusion") or "").strip(),
+                "timestamp": int(time.time()),
+            }
+            self.state.events.append(job_id, event_payload)
+
+            ack = "Qabul qilindi."
+            if event_type == "hello":
+                ack = "Yaxshi, eshitib turibman."
+            elif event_type == "ci_status":
+                conclusion = event_payload["conclusion"].lower()
+                status = event_payload["status"].lower()
+                if conclusion == "success":
+                    ack = f"{event_payload['workflow']} success bo'ldi, kutib turaman."
+                elif conclusion and conclusion != "success":
+                    ack = f"{event_payload['workflow']} xato bo'ldi, tuzatib qayta yuboring."
+                elif status in {"queued", "in_progress", "waiting"}:
+                    ack = f"{event_payload['workflow']} kuzatilyapti, kutib turaman."
+
+            self._json(200, {"status": "ok", "ack": ack, "event_type": event_type, "job_id": job_id})
             return
 
         task = str(payload.get("task") or "").strip()
@@ -414,13 +476,14 @@ class Handler(BaseHTTPRequestHandler):
         }
         self.state.jobs.write(job_id, state_payload)
         self.state.enqueue({"task": task, "commit": commit, "job_id": job_id})
-        self._json(200, {"status": "triggered", "job_id": job_id})
+        self._json(200, {"status": "triggered", "job_id": job_id, "ack": "Trigger olindi, kutib turaman."})
 
 
 def main() -> int:
     config = load_config()
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    EVENTS_DIR.mkdir(parents=True, exist_ok=True)
 
     state = BridgeServerState(config)
     worker = threading.Thread(target=worker_loop, args=(state,), daemon=True)
