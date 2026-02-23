@@ -8,6 +8,7 @@ checks, optionally runs Codex review, and exposes JSON results over HTTP.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import queue
 import re
@@ -173,6 +174,12 @@ def load_config() -> BridgeConfig:
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     raw = expand_env_placeholders(raw)
     return BridgeConfig(raw=raw)
+
+
+def secret_fingerprint(secret: str) -> str:
+    if not secret:
+        return "none"
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
 
 
 def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
@@ -746,6 +753,7 @@ def main() -> int:
     print(f"[bridge-server] listening on 0.0.0.0:{config.bridge_port}")
     print(f"[bridge-server] mode: {config.server_mode}")
     print(f"[bridge-server] workdir: {config.server_workdir}")
+    print(f"[bridge-server] secret_fp={secret_fingerprint(config.shared_secret)}")
     print("[bridge-server] checks: configured deterministic commands + optional codex review")
     try:
         server.serve_forever()
