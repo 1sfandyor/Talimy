@@ -59,9 +59,11 @@ export class ClassesController {
   }
 
   @Get(":id/schedule")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  schedule(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.classesService.getSchedule(tenantId, id)
+  schedule(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
+    @Param("id") id: string
+  ) {
+    return this.classesService.getSchedule(query.tenantId, id)
   }
 
   @Get(":id/stats")
