@@ -28,6 +28,11 @@ export class ScheduleController {
     return this.scheduleService.list(query)
   }
 
+  @Get(":id")
+  getById(@Param("id") id: string, @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }) {
+    return this.scheduleService.getById(query.tenantId, id)
+  }
+
   @Post()
   @Roles("platform_admin", "school_admin")
   create(@Body(new ZodValidationPipe(createScheduleSchema)) payload: CreateScheduleDto) {

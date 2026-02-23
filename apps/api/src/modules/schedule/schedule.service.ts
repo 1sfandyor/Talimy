@@ -140,6 +140,10 @@ export class ScheduleService {
     return this.getScheduleById(payload.tenantId, created.id)
   }
 
+  async getById(tenantId: string, id: string): Promise<ScheduleListItem> {
+    return this.getScheduleById(tenantId, id)
+  }
+
   async update(tenantId: string, id: string, payload: UpdateScheduleDto): Promise<ScheduleListItem> {
     const existing = await this.findScheduleOrThrow(tenantId, id)
 
