@@ -769,9 +769,15 @@ def _run_command_set(
             )
         if res.returncode != 0:
             errors.append(f"{stage} failed: {rendered}")
-            detail = (res.stderr or res.stdout or "").strip()
+            stderr_text = (res.stderr or "").strip()
+            stdout_text = (res.stdout or "").strip()
+            detail = (stderr_text or stdout_text).strip()
             if detail:
                 errors.append(detail[:1200])
+            if stdout_text and stdout_text != detail:
+                errors.append(f"stdout excerpt: {stdout_text[:800]}")
+            if stderr_text and stderr_text != detail:
+                errors.append(f"stderr excerpt: {stderr_text[:800]}")
             break
 
     ok = not errors
@@ -1339,7 +1345,50 @@ def _render_smoke_command(command: str, ctx: dict[str, str]) -> str:
     out = command
     for key, value in ctx.items():
         out = out.replace(f"{{{{{key}}}}}", str(value))
+    route_override = str(ctx.get("SCHEDULE_ROUTE_PATH", "")).strip()
+    if route_override:
+        base_url = str(ctx.get("BASE_URL", "")).rstrip("/")
+        out = out.replace("{{BASE_URL}}/api/schedule", route_override)
+        out = out.replace("{{BASE_URL}}/api/schedules", route_override)
+        if base_url:
+            out = out.replace(f"{base_url}/api/schedule", route_override)
+            out = out.replace(f"{base_url}/api/schedules", route_override)
     return out
+
+
+def _is_schedule_task(task: str) -> bool:
+    return "schedule" in (task or "").lower()
+
+
+def _probe_schedule_routes(ctx: dict[str, str], cfg: Config) -> dict[str, Any]:
+    base_url = str(ctx.get("BASE_URL", "")).rstrip("/")
+    tenant_id = str(ctx.get("TENANT_ID", "")).strip()
+    token = str(ctx.get("ACCESS_TOKEN", "")).strip()
+    if not base_url or not tenant_id or not token:
+        return {"ok": False, "message": "missing context"}
+    headers = {"Authorization": f"Bearer {token}"}
+    probes: list[dict[str, Any]] = []
+    for path in ("/api/schedule", "/api/schedules"):
+        code, resp = _json_request(
+            "GET",
+            f"{base_url}{path}?tenantId={tenant_id}&page=1&limit=1",
+            None,
+            cfg.request_timeout_seconds,
+            headers=headers,
+        )
+        ok = bool(isinstance(resp, dict) and resp.get("success") is True)
+        probes.append(
+            {
+                "path": path,
+                "http_status": code,
+                "success": ok,
+                "body_excerpt": json.dumps(resp, ensure_ascii=False)[:500],
+            }
+        )
+    good = next((p for p in probes if p.get("http_status", 500) < 400 and p.get("success")), None)
+    if good:
+        return {"ok": True, "route": f"{base_url}{good['path']}", "probes": probes}
+    return {"ok": False, "probes": probes}
 
 
 def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
@@ -1369,6 +1418,14 @@ def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: s
         "SMOKE_EMAIL": str(ctx_bootstrap.get("EMAIL", "")),
         "SMOKE_PASSWORD": str(ctx_bootstrap.get("PASSWORD", "")),
     }
+    schedule_probe: dict[str, Any] | None = None
+    if _is_schedule_task(task):
+        schedule_probe = _probe_schedule_routes(ctx, cfg)
+        if schedule_probe.get("ok") and schedule_probe.get("route"):
+            ctx["SCHEDULE_ROUTE_PATH"] = str(schedule_probe["route"])
+            client_log("bridge", f"schedule route probe selected {ctx['SCHEDULE_ROUTE_PATH']}")
+        else:
+            client_log("bridge", "schedule route probe found no success route")
     send_bridge_event(
         cfg,
         job_id=job_id,
@@ -1393,6 +1450,19 @@ def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: s
     )
     if result is None:
         return None
+    if schedule_probe:
+        result.setdefault("warnings", []).extend(
+            [
+                f"schedule route probe {p.get('path')}: http={p.get('http_status')} success={p.get('success')}"
+                for p in schedule_probe.get("probes", [])
+                if isinstance(p, dict)
+            ]
+        )
+        if result.get("next_action") != "proceed" and not schedule_probe.get("ok"):
+            for p in schedule_probe.get("probes", []):
+                if isinstance(p, dict) and p.get("body_excerpt"):
+                    result.setdefault("errors", []).append(f"{p.get('path')} body: {p.get('body_excerpt')}")
+                    break
     smoke_key = str((result.get("post_deploy_smoke") or {}).get("check_set") or "feature-smoke")
     ok = result.get("next_action") == "proceed"
     send_bridge_event(
