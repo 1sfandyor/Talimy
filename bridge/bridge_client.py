@@ -28,6 +28,7 @@ REJA_ROW_RE = re.compile(
     r"^\|\s*(?P<task_no>2\.\d+)\s*\|\s*(?P<title>[^|]+?)\s*\|\s*(?P<status>[^|]+?)\s*\|",
     re.UNICODE,
 )
+TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
 
 
 ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
@@ -244,35 +245,84 @@ def send_bridge_event(
     return None
 
 
+def _detect_task_key(task: str, mapping: dict[str, Any]) -> str | None:
+    task_l = task.lower()
+    match = TASK_NUMBER_RE.search(task)
+    if match:
+        task_no = f"{match.group('phase')}.{match.group('task')}"
+        phase_no = match.group("phase")
+        for key in (task_no, f"{phase_no}.x", phase_no):
+            if key in mapping:
+                return key
+    for token in ("api", "web", "platform"):
+        if token in task_l and token in mapping:
+            return token
+    if "default" in mapping:
+        return "default"
+    return None
+
+
+def _select_dokploy_targets(task: str, dk: dict[str, Any]) -> list[dict[str, str]]:
+    hooks = dk.get("hooks", {})
+    if isinstance(hooks, dict) and hooks:
+        normalized_hooks: dict[str, str] = {
+            str(k): str(v).strip() for k, v in hooks.items() if str(v).strip()
+        }
+        mapping = dk.get("task_deploy_mapping", {})
+        selected_aliases: list[str] = []
+        if isinstance(mapping, dict):
+            task_key = _detect_task_key(task, mapping)
+            if task_key:
+                mapped = mapping.get(task_key)
+                if isinstance(mapped, list):
+                    selected_aliases = [str(x) for x in mapped]
+                elif isinstance(mapped, str):
+                    selected_aliases = [mapped]
+
+        if not selected_aliases:
+            if "default" in normalized_hooks:
+                selected_aliases = ["default"]
+            elif "api" in normalized_hooks and "api" in task.lower():
+                selected_aliases = ["api"]
+            elif "web" in normalized_hooks and "web" in task.lower():
+                selected_aliases = ["web"]
+            elif "platform" in normalized_hooks and "platform" in task.lower():
+                selected_aliases = ["platform"]
+
+        targets: list[dict[str, str]] = []
+        for alias in selected_aliases:
+            hook = normalized_hooks.get(alias, "").strip()
+            if hook:
+                targets.append({"alias": alias, "url": hook})
+        return targets
+
+    # legacy single-hook fallback
+    hook = str(dk.get("deploy_hook_url", "")).strip()
+    if hook:
+        return [{"alias": "default", "url": hook}]
+    return []
+
+
 def trigger_dokploy_deploy(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
     dk = cfg.dokploy
     if not bool(dk.get("enabled", False)):
         return None
 
-    hook = str(dk.get("deploy_hook_url", "")).strip()
-    if not hook:
+    targets = _select_dokploy_targets(task, dk)
+    if not targets:
         return {
             "status": "failure",
             "tests_passed": False,
-            "errors": ["Dokploy deploy hook URL configured emas."],
+            "errors": ["Dokploy deploy hook configured emas (hooks/deploy_hook_url topilmadi)."],
             "warnings": [],
-            "suggestions": ["bridge_config.json -> dokploy.deploy_hook_url ni to'ldiring."],
+            "suggestions": [
+                "bridge_config.laptop.json -> dokploy.hooks yoki dokploy.deploy_hook_url ni to'ldiring."
+            ],
             "next_action": "fix_required",
             "task": task,
             "commit": commit,
             "stage": "dokploy_deploy",
         }
-
-    send_bridge_event(
-        cfg,
-        job_id=job_id,
-        event_type="dokploy_status",
-        task=task,
-        commit=commit,
-        message="Dokploy deploy hook yuborilyapti.",
-        workflow="Dokploy",
-        status="in_progress",
-    )
 
     headers: dict[str, str] = {}
     secret = str(dk.get("auth_header_value", "")).strip()
@@ -280,51 +330,78 @@ def trigger_dokploy_deploy(task: str, commit: str, cfg: Config, job_id: str) -> 
     if secret and header_name:
         headers[header_name] = secret
 
-    try:
-        req = request.Request(hook, data=b"", method="POST")
-        for k, v in headers.items():
-            req.add_header(k, v)
-        with request.urlopen(req, timeout=int(dk.get("request_timeout_seconds", cfg.request_timeout_seconds))) as resp:
-            body = resp.read().decode("utf-8", errors="ignore")
-            send_bridge_event(
-                cfg,
-                job_id=job_id,
-                event_type="dokploy_status",
-                task=task,
-                commit=commit,
-                message="Dokploy deploy hook accepted.",
-                workflow="Dokploy",
-                status="completed",
-                conclusion="success",
-            )
-            return {
-                "status": "success",
-                "response_status": resp.status,
-                "response_body": body[:1000],
-            }
-    except Exception as exc:
+    responses: list[dict[str, Any]] = []
+    errors: list[str] = []
+    timeout_s = int(dk.get("request_timeout_seconds", cfg.request_timeout_seconds))
+
+    for target in targets:
+        alias = target["alias"]
+        hook = target["url"]
+        workflow_name = f"Dokploy:{alias}"
         send_bridge_event(
             cfg,
             job_id=job_id,
             event_type="dokploy_status",
             task=task,
             commit=commit,
-            message="Dokploy deploy hook xato bo'ldi, men uni tuzatib senga qayta yuboraman",
-            workflow="Dokploy",
-            status="completed",
-            conclusion="failure",
+            message=f"{workflow_name} deploy hook yuborilyapti.",
+            workflow=workflow_name,
+            status="in_progress",
         )
+        try:
+            req = request.Request(hook, data=b"", method="POST")
+            for k, v in headers.items():
+                req.add_header(k, v)
+            with request.urlopen(req, timeout=timeout_s) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                responses.append(
+                    {
+                        "alias": alias,
+                        "response_status": resp.status,
+                        "response_body": body[:1000],
+                    }
+                )
+                send_bridge_event(
+                    cfg,
+                    job_id=job_id,
+                    event_type="dokploy_status",
+                    task=task,
+                    commit=commit,
+                    message=f"{workflow_name} deploy hook accepted.",
+                    workflow=workflow_name,
+                    status="completed",
+                    conclusion="success",
+                )
+        except Exception as exc:
+            errors.append(f"{alias}: {exc}")
+            send_bridge_event(
+                cfg,
+                job_id=job_id,
+                event_type="dokploy_status",
+                task=task,
+                commit=commit,
+                message=f"{workflow_name} deploy hook xato bo'ldi, men uni tuzatib senga qayta yuboraman",
+                workflow=workflow_name,
+                status="completed",
+                conclusion="failure",
+            )
+
+    if errors:
         return {
             "status": "failure",
             "tests_passed": False,
-            "errors": [f"Dokploy deploy hook failed: {exc}"],
+            "errors": [f"Dokploy deploy hook failed: {e}" for e in errors],
             "warnings": [],
-            "suggestions": ["Dokploy deploy hook URL/headers ni tekshiring."],
+            "suggestions": ["Dokploy hook URL/headerlar va mappingni tekshiring."],
             "next_action": "fix_required",
             "task": task,
             "commit": commit,
             "stage": "dokploy_deploy",
+            "targets": [t["alias"] for t in targets],
+            "responses": responses,
         }
+
+    return {"status": "success", "targets": [t["alias"] for t in targets], "responses": responses}
 
 
 def run_runtime_health_checks(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:

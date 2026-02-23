@@ -24,6 +24,26 @@
   "dokploy": {
     "enabled": "${DOKPLOY_ENABLED}",
     "deploy_hook_url": "${DOKPLOY_DEPLOY_HOOK_URL}",
+    "hooks": {
+      "api": "${DOKPLOY_API_HOOK_URL}",
+      "web": "${DOKPLOY_WEB_HOOK_URL}",
+      "platform": "${DOKPLOY_PLATFORM_HOOK_URL}",
+      "default": "${DOKPLOY_DEPLOY_HOOK_URL}"
+    },
+    "task_deploy_mapping": {
+      "2.x": ["api"],
+      "3.x": ["web", "platform"],
+      "4.x": ["web", "platform"],
+      "5.x": ["web", "platform"],
+      "6.x": ["web", "platform"],
+      "7.x": ["web", "platform"],
+      "8.x": ["web", "platform"],
+      "9.x": ["web", "platform"],
+      "10.x": ["web", "platform"],
+      "11.x": ["web", "platform"],
+      "12.x": ["web", "platform"],
+      "17.x": ["api", "web", "platform"]
+    },
     "auth_header_name": "${DOKPLOY_AUTH_HEADER_NAME}",
     "auth_header_value": "${DOKPLOY_AUTH_HEADER_VALUE}",
     "request_timeout_seconds": 20

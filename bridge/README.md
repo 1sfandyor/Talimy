@@ -118,10 +118,21 @@ Scriptlar `BRIDGE_CONFIG_PATH` env orqali qaysi config ishlatilishini tanlaydi.
 - `${TELEGRAM_BOT_TOKEN}`
 - `${TELEGRAM_CHAT_ID}`
 - `${DOKPLOY_DEPLOY_HOOK_URL}`
+- `${DOKPLOY_API_HOOK_URL}`
+- `${DOKPLOY_WEB_HOOK_URL}`
+- `${DOKPLOY_PLATFORM_HOOK_URL}`
 - `${DOKPLOY_AUTH_HEADER_NAME}`
 - `${DOKPLOY_AUTH_HEADER_VALUE}`
 
 Ularni configni tahrir qilmasdan OS env orqali berishingiz mumkin.
+
+`bridge_config.laptop.json` ichida `dokploy.hooks` va `dokploy.task_deploy_mapping` qo'llab-quvvatlanadi:
+
+- `2.x` backend tasklar -> `api` hook
+- `3.x`..`12.x` frontend/panel tasklar -> `web` + `platform` hooklar
+- `17.x` deploy tasklar -> `api` + `web` + `platform`
+
+`dokploy.deploy_hook_url` eski single-hook fallback sifatida qolgan.
 
 ## 4) Natija formati
 
