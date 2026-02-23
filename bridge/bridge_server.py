@@ -685,6 +685,8 @@ class Handler(BaseHTTPRequestHandler):
                 status = event_payload["status"].lower()
                 if conclusion == "success":
                     ack = f"{event_payload['workflow']} success bo'ldi, kutib turaman."
+                elif conclusion in {"skipped", "neutral"}:
+                    ack = f"{event_payload['workflow']} CI skip/neutral, keyingi bosqichni kutib turaman."
                 elif conclusion and conclusion != "success":
                     ack = f"{event_payload['workflow']} xato bo'ldi, tuzatib qayta yuboring."
                 elif status in {"queued", "in_progress", "waiting"}:

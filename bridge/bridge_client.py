@@ -908,9 +908,12 @@ def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dic
             cfg.shared_secret,
         )
         if code == 200:
-            write_last_result(resp)
-            print("\n[bridge-client] result received")
-            return resp
+            stage = str(resp.get("stage", "")).strip().lower()
+            status = str(resp.get("status", "")).strip().lower()
+            if stage == "completed" or status in {"success", "failure", "error"}:
+                write_last_result(resp)
+                print("\n[bridge-client] result received")
+                return resp
         if code not in (404,):
             print(f"\n[bridge-client] unexpected response {code}: {resp}")
         dots = (dots + 1) % 4
