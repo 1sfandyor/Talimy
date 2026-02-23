@@ -342,8 +342,8 @@ def run_codex_prompt(
 ) -> subprocess.CompletedProcess[str]:
     """Run codex prompt with CLI-compat fallback across versions."""
     variants = [
-        [codex_bin, "exec", "--skip-git-repo-check", "-s", "danger-full-access", "-a", "never", "--color", "never", prompt],
-        [codex_bin, "exec", "-s", "danger-full-access", "-a", "never", "--color", "never", prompt],
+        [codex_bin, "-s", "danger-full-access", "-a", "never", "exec", "--skip-git-repo-check", "--color", "never", prompt],
+        [codex_bin, "-s", "danger-full-access", "-a", "never", "exec", "--color", "never", prompt],
         [codex_bin, "exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "--color", "never", prompt],
         [codex_bin, "-s", "danger-full-access", "-a", "never", "--no-interactive", "-q", prompt],
         [codex_bin, "-s", "danger-full-access", "-a", "never", "-q", prompt],

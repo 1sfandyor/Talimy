@@ -973,7 +973,7 @@ def git_commit_if_needed(cfg: Config, message: str) -> bool:
 def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
     repo = cfg.laptop_repo_path
     variants = [
-        ["codex", "exec", "-s", "danger-full-access", "-a", "never", "--color", "never", prompt],
+        ["codex", "-s", "danger-full-access", "-a", "never", "exec", "--color", "never", prompt],
         ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--color", "never", prompt],
         ["codex", "-s", "danger-full-access", "-a", "never", "--no-interactive", "-q", prompt],
         ["codex", "-s", "danger-full-access", "-a", "never", "-q", prompt],
