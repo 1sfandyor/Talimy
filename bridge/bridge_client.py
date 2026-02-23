@@ -159,6 +159,18 @@ def client_log(channel: str, message: str) -> None:
     print(f"{left}{right} {message}")
 
 
+def server_log_on_client(channel: str, message: str) -> None:
+    channel_l = channel.lower()
+    channel_color = {
+        "bridge": "38;5;208",  # orange
+        "ack": "38;5;208",     # orange
+        "codex": "34",         # blue
+    }.get(channel_l, "33")
+    left = ansi_color("38;5;208", "[SERVER]")
+    right = ansi_color(channel_color, f"[{channel}]")
+    print(f"{left}{right} {message}")
+
+
 def http_json(
     method: str,
     url: str,
@@ -226,7 +238,7 @@ def trigger_server(task: str, commit: str, cfg: Config, session_context: dict[st
     if code != 200:
         raise RuntimeError(f"bridge trigger failed ({code}): {resp}")
     if resp.get("ack"):
-        client_log("server-ack", f"[trigger] {resp['ack']}")
+        server_log_on_client("ack", f"[trigger] {resp['ack']}")
     return job_id
 
 
@@ -277,7 +289,7 @@ def send_bridge_event(
     if code == 200:
         ack = str(resp.get("ack", "")).strip()
         if ack:
-            client_log("server-ack", f"[{event_type}] {ack}")
+            server_log_on_client("ack", f"[{event_type}] {ack}")
         return resp
     client_log("bridge", f"event failed ({code}) [{event_type}]: {resp}")
     return None
@@ -1073,7 +1085,11 @@ def run_push_ci_server_flow(
     hello_src = str(hello.get("reply_source") or "").strip()
     msg = hello.get("message", "ok")
     if hello_reply:
-        client_log("hello", f"{msg} | server-codex={hello_reply} ({hello_src})")
+        client_log("hello", msg)
+        if hello_src == "server_codex":
+            server_log_on_client("codex", hello_reply)
+        else:
+            server_log_on_client("bridge", f"hello reply source={hello_src} | {hello_reply}")
     else:
         client_log("hello", str(msg))
     session_context = build_session_context_excerpt(

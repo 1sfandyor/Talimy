@@ -201,6 +201,21 @@ def server_log(channel: str, message: str) -> None:
     print(f"{left}{right} {message}")
 
 
+def remote_log_on_server(source: str, channel: str, message: str) -> None:
+    source_l = source.upper()
+    source_color = "38;5;45" if source_l == "LAPTOP" else "37"
+    channel_l = channel.lower()
+    channel_color = {
+        "bridge": "37",
+        "event": "36",
+        "hello": "32",
+        "ack": "33",
+    }.get(channel_l, "37")
+    left = ansi_color(source_color, f"[{source_l}]")
+    right = ansi_color(channel_color, f"[{channel}]")
+    print(f"{left}{right} {message}")
+
+
 def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
     started_at = time.time()
     completed = subprocess.run(
@@ -600,7 +615,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/hello":
             params = parse_qs(parsed.query)
             side = (params.get("side") or ["unknown"])[0]
-            self._console(f"hello from {side}")
+            remote_log_on_server(side.upper(), "hello", "bridge hello request keldi")
             reply, reply_source, hello_error = run_server_codex_hello(
                 self.state.config, self.state.config.server_workdir, side=side
             )
@@ -693,8 +708,10 @@ class Handler(BaseHTTPRequestHandler):
             wf = event_payload["workflow"] or "-"
             st = event_payload["status"] or "-"
             cc = event_payload["conclusion"] or "-"
-            self._console(
-                f"event job={job_id} type={event_type} workflow={wf} status={st} conclusion={cc} msg={msg}"
+            remote_log_on_server(
+                "LAPTOP",
+                "event",
+                f"job={job_id} type={event_type} workflow={wf} status={st} conclusion={cc} msg={msg}",
             )
 
             ack = "Qabul qilindi."
