@@ -367,6 +367,11 @@ def run_codex_prompt(
         stderr_chunks: list[str] = []
         io_lock = threading.Lock()
 
+        stream_state: dict[str, dict[str, bool]] = {
+            "stdout": {"json_notice": False},
+            "stderr": {"json_notice": False, "banner_notice": False},
+        }
+
         def _reader(stream: Any, kind: str) -> None:
             if stream is None:
                 return
@@ -382,13 +387,48 @@ def run_codex_prompt(
                 line = chunk.strip()
                 if not line:
                     continue
+                is_json_fragment = (
+                    line.startswith("{")
+                    or line.startswith("}")
+                    or line.startswith("[")
+                    or line.startswith("]")
+                    or line.startswith('"')
+                )
+                is_banner_meta = line in {"--------", "tokens used"} or line.isdigit() or any(
+                    line.startswith(prefix)
+                    for prefix in (
+                        "workdir:",
+                        "model:",
+                        "provider:",
+                        "approval:",
+                        "sandbox:",
+                        "reasoning effort:",
+                        "reasoning summaries:",
+                        "session id:",
+                    )
+                )
                 if kind == "stdout":
                     # Avoid dumping full JSON payloads to server logs.
-                    if line.startswith("{") or line.startswith("["):
-                        server_log("codex", f"stdout (json chunk {len(chunk)} chars)")
+                    if is_json_fragment:
+                        if not stream_state["stdout"]["json_notice"]:
+                            server_log("codex", "stdout (json stream suppressed; parsed summary follows)")
+                            stream_state["stdout"]["json_notice"] = True
                     else:
+                        stream_state["stdout"]["json_notice"] = False
                         server_log("codex", f"stdout {line[:240]}")
                 else:
+                    if is_json_fragment:
+                        if not stream_state["stderr"]["json_notice"]:
+                            server_log("codex", "stderr (json stream suppressed)")
+                            stream_state["stderr"]["json_notice"] = True
+                        continue
+                    stream_state["stderr"]["json_notice"] = False
+                    if is_banner_meta:
+                        if not stream_state["stderr"]["banner_notice"]:
+                            server_log("codex", "stderr (codex banner/meta suppressed)")
+                            stream_state["stderr"]["banner_notice"] = True
+                        continue
+                    stream_state["stderr"]["banner_notice"] = False
                     server_log("codex", f"stderr {line[:240]}")
 
         t_out = threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True)
