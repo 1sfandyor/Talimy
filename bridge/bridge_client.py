@@ -626,8 +626,38 @@ def _should_parse_http_status(command: str) -> bool:
     return "curl" in c
 
 
+def _is_expected_negative_http_smoke(command: str) -> bool:
+    c = (command or "").lower()
+    # Negative smoke commands should state expected error statuses explicitly.
+    expected_markers = ("expected 400", "expected 401", "expected 403", "expected 404")
+    if any(m in c for m in expected_markers):
+        return True
+    if ("throw \"expected " in c or "throw 'expected " in c) and ("got $s" in c or "got $status" in c):
+        return True
+    if " -in @(\"401\",\"403\")" in c or " -in @('401','403')" in c:
+        return True
+    return False
+
+
+def _curl_output_excerpt(stdout_text: str | None, stderr_text: str | None, http_code: int | None) -> str | None:
+    text = (stdout_text or "").strip()
+    if not text:
+        text = (stderr_text or "").strip()
+    if not text:
+        return None
+    # Remove trailing curl -w status line if present (we log http=... separately).
+    text = re.sub(r"(?ms)\n?HTTP:[1-5]\d\d\s*$", "", text).strip()
+    text = re.sub(r"(?ms)\n?[1-5]\d\d\s*$", "", text).strip()
+    if not text:
+        return None
+    if len(text) > 500:
+        text = text[:500] + "... [truncated]"
+    return text
+
+
 def _format_smoke_status(rc: int, http_code: int | None = None) -> str:
-    code = ansi_color("92" if rc == 0 else "91", f"rc={rc}")
+    # Exit code is always shown in pink for visibility; HTTP status carries success/failure color.
+    code = ansi_color("95", f"rc={rc}")
     if http_code is None:
         return code
     http_col = "92" if 200 <= http_code < 400 else ("93" if 400 <= http_code < 500 else "91")
@@ -865,18 +895,39 @@ def _run_command_set(
         res = run_shell_or_direct(rendered, repo)
         duration = round(time.time() - started, 2)
         http_code = _extract_http_status_code(res.stdout, res.stderr) if _should_parse_http_status(rendered) else None
+        effective_rc = res.returncode
+        if (
+            stage == "post_deploy_smoke"
+            and effective_rc == 0
+            and http_code is not None
+            and http_code >= 400
+            and not _is_expected_negative_http_smoke(rendered)
+        ):
+            effective_rc = 1
+            synthetic = f"Bridge smoke guard: unexpected HTTP {http_code} with rc=0 (positive smoke command)"
+            res = subprocess.CompletedProcess(
+                args=res.args,
+                returncode=effective_rc,
+                stdout=res.stdout,
+                stderr=((res.stderr or "").strip() + ("\n" if (res.stderr or "").strip() else "") + synthetic),
+            )
         check_results.append(
             {
                 "command": rendered,
-                "returncode": res.returncode,
+                "returncode": effective_rc,
                 "http_status": http_code,
                 "stdout": res.stdout,
                 "stderr": res.stderr,
                 "duration_seconds": duration,
             }
         )
-        client_log("test", f"[{stage}] {ansi_color('96', test_name)} {_format_smoke_status(res.returncode, http_code)} dur={duration}s")
-        client_log("bridge", f"[{stage}] done rc={res.returncode} dur={duration}s")
+        client_log("test", f"[{stage}] {ansi_color('96', test_name)} {_format_smoke_status(effective_rc, http_code)} dur={duration}s")
+        if _should_parse_http_status(rendered):
+            excerpt = _curl_output_excerpt(res.stdout, res.stderr, http_code)
+            if excerpt:
+                http_col = "92" if (http_code is not None and 200 <= http_code < 400) else ("93" if (http_code is not None and 400 <= http_code < 500) else "91")
+                client_log("test", f"[{stage}] {ansi_color(http_col, 'curl-output')} {excerpt}")
+        client_log("bridge", f"[{stage}] done rc={effective_rc} dur={duration}s")
         if stage == "post_deploy_smoke" and event_job_id:
             send_bridge_event(
                 cfg,
@@ -886,10 +937,10 @@ def _run_command_set(
                 commit=event_commit or "",
                 workflow=str(smoke_key or "feature-smoke"),
                 status="completed",
-                conclusion="success" if res.returncode == 0 else "failure",
-                message=f"Smoke cmd done rc={res.returncode} dur={duration}s: {rendered[:140]}",
+                conclusion="success" if effective_rc == 0 else "failure",
+                message=f"Smoke cmd done rc={effective_rc} dur={duration}s: {rendered[:140]}",
             )
-        if res.returncode != 0:
+        if effective_rc != 0:
             stderr_text = (res.stderr or "").strip()
             stdout_text = (res.stdout or "").strip()
             repaired_command = _maybe_repair_failed_smoke_command(
@@ -916,10 +967,26 @@ def _run_command_set(
                 res2 = run_shell_or_direct(repaired_rendered, repo)
                 duration2 = round(time.time() - started2, 2)
                 http_code2 = _extract_http_status_code(res2.stdout, res2.stderr) if _should_parse_http_status(repaired_rendered) else None
+                effective_rc2 = res2.returncode
+                if (
+                    stage == "post_deploy_smoke"
+                    and effective_rc2 == 0
+                    and http_code2 is not None
+                    and http_code2 >= 400
+                    and not _is_expected_negative_http_smoke(repaired_rendered)
+                ):
+                    effective_rc2 = 1
+                    synthetic2 = f"Bridge smoke guard: unexpected HTTP {http_code2} with rc=0 (positive smoke command)"
+                    res2 = subprocess.CompletedProcess(
+                        args=res2.args,
+                        returncode=effective_rc2,
+                        stdout=res2.stdout,
+                        stderr=((res2.stderr or "").strip() + ("\n" if (res2.stderr or "").strip() else "") + synthetic2),
+                    )
                 check_results.append(
                     {
                         "command": repaired_rendered,
-                        "returncode": res2.returncode,
+                        "returncode": effective_rc2,
                         "http_status": http_code2,
                         "stdout": res2.stdout,
                         "stderr": res2.stderr,
@@ -927,8 +994,13 @@ def _run_command_set(
                         "repair_retry": True,
                     }
                 )
-                client_log("test", f"[{stage}] {ansi_color('96', repaired_test_name)}(repaired) {_format_smoke_status(res2.returncode, http_code2)} dur={duration2}s")
-                client_log("bridge", f"[{stage}] repaired cmd done rc={res2.returncode} dur={duration2}s")
+                client_log("test", f"[{stage}] {ansi_color('96', repaired_test_name)}(repaired) {_format_smoke_status(effective_rc2, http_code2)} dur={duration2}s")
+                if _should_parse_http_status(repaired_rendered):
+                    excerpt2 = _curl_output_excerpt(res2.stdout, res2.stderr, http_code2)
+                    if excerpt2:
+                        http_col2 = "92" if (http_code2 is not None and 200 <= http_code2 < 400) else ("93" if (http_code2 is not None and 400 <= http_code2 < 500) else "91")
+                        client_log("test", f"[{stage}] {ansi_color(http_col2, 'curl-output(repaired)')} {excerpt2}")
+                client_log("bridge", f"[{stage}] repaired cmd done rc={effective_rc2} dur={duration2}s")
                 if stage == "post_deploy_smoke" and event_job_id:
                     send_bridge_event(
                         cfg,
@@ -938,10 +1010,10 @@ def _run_command_set(
                         commit=event_commit or "",
                         workflow=str(smoke_key or "feature-smoke"),
                         status="completed",
-                        conclusion="success" if res2.returncode == 0 else "failure",
-                        message=f"Smoke repaired cmd done rc={res2.returncode} dur={duration2}s",
+                        conclusion="success" if effective_rc2 == 0 else "failure",
+                        message=f"Smoke repaired cmd done rc={effective_rc2} dur={duration2}s",
                     )
-                if res2.returncode == 0:
+                if effective_rc2 == 0:
                     continue
                 stderr_text = (res2.stderr or "").strip()
                 stdout_text = (res2.stdout or "").strip()
@@ -3355,7 +3427,8 @@ def run_task_pipeline_with_retries(
         )
         if rc == 0:
             client_log("task", "pipeline result=SUCCESS")
-            _maybe_mark_reja_and_push(task, current_cfg, final_result)
+            success_result = read_last_result()
+            _maybe_mark_reja_and_push(task, current_cfg, success_result)
             return 0
 
         failure_result = read_last_result() or {
