@@ -264,6 +264,42 @@ def render_check_command(command: str, config: BridgeConfig, cwd: Path) -> str:
     return SERVICE_TOKEN_RE.sub(repl, command)
 
 
+def run_codex_prompt(
+    codex_bin: str,
+    prompt: str,
+    *,
+    cwd: Path,
+    timeout: int,
+) -> subprocess.CompletedProcess[str]:
+    """Run codex prompt with CLI-compat fallback across versions."""
+    variants = [
+        [codex_bin, "--no-interactive", "-q", prompt],
+        [codex_bin, "-q", prompt],
+        [codex_bin, prompt],
+    ]
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for args in variants:
+        result = subprocess.run(
+            args,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        last_result = result
+        stderr_l = (result.stderr or "").lower()
+        if result.returncode == 0:
+            return result
+        if "unexpected argument '--no-interactive'" in stderr_l:
+            continue
+        if "unknown option '--no-interactive'" in stderr_l:
+            continue
+        # For non-flag errors (real codex/runtime errors), stop and return.
+        return result
+    assert last_result is not None
+    return last_result
+
+
 def run_server_codex_review(
     trigger: dict[str, Any], config: BridgeConfig, workdir: Path, *, mode: str
 ) -> dict[str, Any] | None:
@@ -310,13 +346,7 @@ Qilish kerak:
 """.strip()
 
     try:
-        result = subprocess.run(
-            [codex_bin, "--no-interactive", "-q", prompt],
-            cwd=str(workdir),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout)
     except Exception as exc:  # pragma: no cover - runtime safeguard
         return {
             "status": "error",
@@ -365,13 +395,7 @@ def run_server_codex_hello(
         "Faqat javob matnini yozing."
     )
     try:
-        result = subprocess.run(
-            [codex_bin, "--no-interactive", "-q", prompt],
-            cwd=str(workdir),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout)
     except Exception as exc:
         return "", "server_codex_error", {"message": f"codex invoke failed: {exc}"}
 
