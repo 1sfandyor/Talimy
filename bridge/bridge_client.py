@@ -8,6 +8,7 @@ and optionally helps pick the next task from docReja/Reja.md tracker table.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -119,6 +120,12 @@ def load_config() -> Config:
     config_path = resolve_config_path()
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     return Config(raw=expand_env_placeholders(raw))
+
+
+def secret_fingerprint(secret: str) -> str:
+    if not secret:
+        return "none"
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
 
 
 def http_json(
@@ -1184,6 +1191,11 @@ def parse_common_push_flags(args: list[str]) -> dict[str, Any]:
 
 def main() -> int:
     cfg = load_config()
+    cfg_path = resolve_config_path()
+    print(
+        f"[bridge-client] config={cfg_path} server={cfg.server_host}:{cfg.bridge_port} "
+        f"secret_fp={secret_fingerprint(cfg.shared_secret)}"
+    )
     if len(sys.argv) < 2:
         return usage()
 
