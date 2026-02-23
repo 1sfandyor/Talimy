@@ -291,6 +291,41 @@ def run_command_logged(command: str, cwd: Path, timeout: int = 300, *, job_id: s
     return res
 
 
+def _analyze_docker_service_ps_checks(check_results: list[dict[str, Any]]) -> list[str]:
+    warnings: list[str] = []
+    transitional_tokens = (
+        " preparing ",
+        " pending ",
+        " assigned ",
+        " accepted ",
+        " ready ",
+        " starting ",
+        " shutdown ",
+        " complete ",
+    )
+    failure_tokens = (" failed ", " rejected ", " orphaned ")
+
+    for item in check_results:
+        cmd = str(item.get("command", "")).lower()
+        if "docker service ps " not in cmd:
+            continue
+        stdout = f" {str(item.get('stdout', '')).lower()} "
+        lines = [ln.strip() for ln in str(item.get("stdout", "")).splitlines() if ln.strip()]
+        if any(tok in stdout for tok in failure_tokens):
+            warnings.append("docker service ps ichida failed/rejected task satrlari ko'rindi (rollout xatolari bo'lishi mumkin).")
+            continue
+        if any(tok in stdout for tok in transitional_tokens):
+            # Often normal right after Dokploy hook; surface as rollout-lag warning, not failure.
+            preview = ""
+            if len(lines) > 1:
+                preview = lines[1][:180]
+            warnings.append(
+                "docker service ps rollout hali transitional holatda ko'rindi (Preparing/Pending/Starting/Ready); deploy to'liq settle bo'lmagan bo'lishi mumkin."
+                + (f" preview: {preview}" if preview else "")
+            )
+    return warnings
+
+
 TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
 SERVICE_TOKEN_RE = re.compile(r"\{\{service:(?P<alias>[a-zA-Z0-9_-]+)\}\}")
 
@@ -749,6 +784,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         )
 
     warnings: list[str] = []
+    warnings.extend(_analyze_docker_service_ps_checks(check_results))
     suggestions: list[str] = []
     if codex_review:
         warnings.extend([str(x) for x in codex_review.get("warnings", [])])
