@@ -1340,8 +1340,37 @@ def run_runtime_health_checks(task: str, commit: str, cfg: Config, job_id: str) 
     }
 
 
-def _json_request(method: str, url: str, payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any]]:
-    return http_json(method, url, payload, timeout, token="")
+def _json_request(
+    method: str,
+    url: str,
+    payload: dict[str, Any] | None,
+    timeout: int,
+    *,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    req = request.Request(url, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    for k, v in (headers or {}).items():
+        if v:
+            req.add_header(str(k), str(v))
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                parsed = {"raw": body}
+            return int(getattr(resp, "status", 200) or 200), parsed
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            parsed = {"raw": body}
+        return int(exc.code), parsed
+    except error.URLError as exc:
+        return 599, {"error": str(exc)}
 
 
 def _discover_smoke_tenant_id(cfg: Config) -> str | None:
