@@ -273,6 +273,8 @@ def run_codex_prompt(
 ) -> subprocess.CompletedProcess[str]:
     """Run codex prompt with CLI-compat fallback across versions."""
     variants = [
+        [codex_bin, "exec", "--skip-git-repo-check", "--color", "never", prompt],
+        [codex_bin, "exec", "--color", "never", prompt],
         [codex_bin, "--no-interactive", "-q", prompt],
         [codex_bin, "-q", prompt],
         [codex_bin, prompt],
@@ -297,6 +299,8 @@ def run_codex_prompt(
         if "unexpected argument '-q'" in stderr_l:
             continue
         if "unknown option '-q'" in stderr_l:
+            continue
+        if "unrecognized subcommand 'exec'" in stderr_l:
             continue
         # For non-flag errors (real codex/runtime errors), stop and return.
         return result
