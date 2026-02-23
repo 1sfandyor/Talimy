@@ -22,10 +22,30 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "bridge_config.json"
+DEFAULT_CONFIG_PATH = BASE_DIR / "bridge_config.json"
 STATE_DIR = BASE_DIR / ".bridge-state"
 RESULTS_DIR = STATE_DIR / "results"
 EVENTS_DIR = STATE_DIR / "events"
+ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+
+
+def resolve_config_path() -> Path:
+    raw = os.environ.get("BRIDGE_CONFIG_PATH", "").strip()
+    if not raw:
+        return DEFAULT_CONFIG_PATH
+    return Path(raw)
+
+
+def expand_env_placeholders(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: expand_env_placeholders(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env_placeholders(v) for v in value]
+    if isinstance(value, str):
+        m = ENV_TOKEN_RE.match(value.strip())
+        if m:
+            return os.environ.get(m.group(1), "")
+    return value
 
 
 @dataclass
@@ -144,7 +164,9 @@ class BridgeServerState:
 
 
 def load_config() -> BridgeConfig:
-    raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    config_path = resolve_config_path()
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    raw = expand_env_placeholders(raw)
     return BridgeConfig(raw=raw)
 
 

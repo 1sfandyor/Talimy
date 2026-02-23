@@ -35,6 +35,7 @@ To'ldiring:
 
 ```bash
 cd /path/to/talimy
+export BRIDGE_CONFIG_PATH=bridge/bridge_config.server.json
 python3 bridge/bridge_server.py
 ```
 
@@ -49,18 +50,21 @@ Prerequisite:
 Bridge salomlashish testi:
 
 ```bash
+set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
 python bridge/bridge_client.py hello
 ```
 
 Manual task:
 
 ```bash
+set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
 python bridge/bridge_client.py push "2.12 Exams Module smoke test"
 ```
 
 Realtime event tail bilan:
 
 ```bash
+set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
 python bridge/bridge_client.py push "2.12 Exams Module smoke test" --watch
 ```
 
@@ -79,6 +83,7 @@ python bridge/bridge_client.py bridge-push-next
 Realtime tail bilan:
 
 ```bash
+set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
 python bridge/bridge_client.py bridge-push-next --watch
 ```
 
@@ -100,6 +105,23 @@ python bridge/bridge_client.py watch-events <job_id>
   - `ci_job_id=...`
   - `server_job_id=...`
 - yakuniy natija fayli: `bridge/.bridge-state/last_bridge_result.json`
+
+### Aloxida config fayllar (tahrirsiz ishga tushirish)
+
+- Laptop: `bridge/bridge_config.laptop.json`
+- Server: `bridge/bridge_config.server.json`
+
+Scriptlar `BRIDGE_CONFIG_PATH` env orqali qaysi config ishlatilishini tanlaydi.
+
+`bridge_config.laptop.json` ichida ba'zi maxfiy qiymatlar `${...}` ko'rinishida berilgan:
+
+- `${TELEGRAM_BOT_TOKEN}`
+- `${TELEGRAM_CHAT_ID}`
+- `${DOKPLOY_DEPLOY_HOOK_URL}`
+- `${DOKPLOY_AUTH_HEADER_NAME}`
+- `${DOKPLOY_AUTH_HEADER_VALUE}`
+
+Ularni configni tahrir qilmasdan OS env orqali berishingiz mumkin.
 
 ## 4) Natija formati
 

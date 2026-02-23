@@ -21,13 +21,35 @@ from typing import Any
 from urllib import error, parse, request
 
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "bridge_config.json"
+DEFAULT_CONFIG_PATH = BASE_DIR / "bridge_config.json"
 LAST_RESULT_PATH = BASE_DIR / ".bridge-state" / "last_bridge_result.json"
 
 REJA_ROW_RE = re.compile(
     r"^\|\s*(?P<task_no>2\.\d+)\s*\|\s*(?P<title>[^|]+?)\s*\|\s*(?P<status>[^|]+?)\s*\|",
     re.UNICODE,
 )
+
+
+ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+
+
+def resolve_config_path() -> Path:
+    raw = os.environ.get("BRIDGE_CONFIG_PATH", "").strip()
+    if not raw:
+        return DEFAULT_CONFIG_PATH
+    return Path(raw)
+
+
+def expand_env_placeholders(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: expand_env_placeholders(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env_placeholders(v) for v in value]
+    if isinstance(value, str):
+        m = ENV_TOKEN_RE.match(value.strip())
+        if m:
+            return os.environ.get(m.group(1), "")
+    return value
 
 
 @dataclass
@@ -88,7 +110,9 @@ class Config:
 
 
 def load_config() -> Config:
-    return Config(raw=json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+    config_path = resolve_config_path()
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    return Config(raw=expand_env_placeholders(raw))
 
 
 def http_json(

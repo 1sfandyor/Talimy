@@ -1,0 +1,93 @@
+{
+  "server_host": "10.66.66.1",
+  "bridge_port": 8765,
+  "shared_secret": "talimy-bridge-shared-secret-v1",
+  "branch": "main",
+  "server_mode": "runtime_inspector",
+  "server_workdir": "/root",
+  "laptop_repo_path": "C:/Users/isfan/Desktop/talimy",
+  "tasks_file": "docReja/Reja.md",
+  "poll_interval_seconds": 5,
+  "request_timeout_seconds": 15,
+  "github_ci": {
+    "enabled": true,
+    "repo": "1sfandyor/Talimy",
+    "timeout_seconds": 3600,
+    "poll_interval_seconds": 10,
+    "workflows": ["CD API", "CD Web", "CD Platform"]
+  },
+  "telegram": {
+    "enabled": false,
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "dokploy": {
+    "enabled": false,
+    "deploy_hook_url": "",
+    "auth_header_name": "",
+    "auth_header_value": "",
+    "request_timeout_seconds": 20
+  },
+  "runtime_checks": {
+    "enabled": true,
+    "timeout_seconds": 300,
+    "poll_interval_seconds": 5,
+    "request_timeout_seconds": 15,
+    "urls": [
+      { "name": "api-health", "url": "https://api.talimy.space/api/health", "expect_status": 200 },
+      { "name": "web", "url": "https://talimy.space", "expect_status": 200 },
+      { "name": "platform", "url": "https://platform.talimy.space", "expect_status": 200 }
+    ]
+  },
+  "session_context": {
+    "enabled": false,
+    "max_messages": 12,
+    "max_chars": 4000,
+    "roles": ["user", "assistant"]
+  },
+  "server_codex": {
+    "enabled": true,
+    "binary": "codex",
+    "timeout_seconds": 300
+  },
+  "task_check_mapping": {
+    "2.x": "api_runtime",
+    "3.x": "web_runtime",
+    "4.x": "web_runtime",
+    "5.x": "web_runtime",
+    "6.x": "web_runtime",
+    "7.x": "web_runtime",
+    "8.x": "web_runtime",
+    "9.x": "web_runtime",
+    "10.x": "web_runtime",
+    "11.x": "web_runtime",
+    "12.x": "web_runtime",
+    "16.x": "deploy_runtime",
+    "17.x": "deploy_runtime"
+  },
+  "service_name_patterns": {
+    "api": ["talimy-api-"],
+    "web": ["talimy-web-"],
+    "platform": ["talimy-platform-"]
+  },
+  "server_checks": {
+    "default": ["docker service ls"],
+    "deploy_runtime": [
+      "docker service ls",
+      "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\""
+    ],
+    "api_runtime": [
+      "docker service ps {{service:api}} --no-trunc",
+      "docker service logs --tail=200 {{service:api}}",
+      "curl -fsS https://api.talimy.space/api/health"
+    ],
+    "web_runtime": [
+      "docker service ps {{service:web}} --no-trunc",
+      "docker service logs --tail=200 {{service:web}}",
+      "docker service ps {{service:platform}} --no-trunc",
+      "docker service logs --tail=200 {{service:platform}}",
+      "curl -fsS https://talimy.space > /dev/null",
+      "curl -fsS https://platform.talimy.space > /dev/null"
+    ]
+  }
+}
