@@ -339,6 +339,7 @@ def run_codex_prompt(
     cwd: Path,
     timeout: int,
     job_id: str = "-",
+    stream_mode: str = "normal",
 ) -> subprocess.CompletedProcess[str]:
     """Run codex prompt with CLI-compat fallback across versions."""
     variants = [
@@ -371,6 +372,10 @@ def run_codex_prompt(
             "stdout": {"json_notice": False},
             "stderr": {"json_notice": False, "banner_notice": False},
         }
+
+        mode = (stream_mode or "normal").strip().lower()
+        if mode not in {"quiet", "normal", "verbose"}:
+            mode = "normal"
 
         def _reader(stream: Any, kind: str) -> None:
             if stream is None:
@@ -413,9 +418,17 @@ def run_codex_prompt(
                         if not stream_state["stdout"]["json_notice"]:
                             server_log("codex", "stdout (json stream suppressed; parsed summary follows)")
                             stream_state["stdout"]["json_notice"] = True
+                        continue
+                    if mode == "quiet":
+                        continue
+                    if mode == "normal":
+                        # Suppress verbose shell transcript/output spam in normal mode.
+                        if line.startswith("/bin/bash -lc") or line.startswith("/usr/bin/") or line.startswith("total "):
+                            continue
                     else:
                         stream_state["stdout"]["json_notice"] = False
-                        server_log("codex", f"stdout {line[:240]}")
+                    stream_state["stdout"]["json_notice"] = False
+                    server_log("codex", f"stdout {line[:240]}")
                 else:
                     if is_json_fragment:
                         if not stream_state["stderr"]["json_notice"]:
@@ -429,6 +442,18 @@ def run_codex_prompt(
                             stream_state["stderr"]["banner_notice"] = True
                         continue
                     stream_state["stderr"]["banner_notice"] = False
+                    if mode == "quiet":
+                        continue
+                    if mode == "normal":
+                        # Keep progress narration, hide shell transcript chatter.
+                        if line in {"exec", "codex", "thinking"}:
+                            continue
+                        if line.startswith("/bin/bash -lc"):
+                            continue
+                        if line.startswith("succeeded in ") or line.startswith("exited "):
+                            continue
+                        if line.startswith("total ") or line.startswith("drwx") or line.startswith("-rw"):
+                            continue
                     server_log("codex", f"stderr {line[:240]}")
 
         t_out = threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True)
@@ -492,6 +517,7 @@ def run_server_codex_review(
 
     codex_bin = str(codex_cfg.get("binary", "codex"))
     timeout = int(codex_cfg.get("timeout_seconds", 300))
+    stream_mode = str(codex_cfg.get("log_stream_mode", "normal"))
     job_id = str(trigger.get("job_id") or "-")
 
     session_ctx = trigger.get("session_context") if isinstance(trigger.get("session_context"), dict) else {}
@@ -553,7 +579,14 @@ Qilish kerak:
     try:
         policy_meta = f" policy_fp={policy_fp}" if policy_fp else ""
         server_log("codex", f"review start mode={mode}{policy_meta}")
-        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout, job_id=job_id)
+        result = run_codex_prompt(
+            codex_bin,
+            prompt,
+            cwd=workdir,
+            timeout=timeout,
+            job_id=job_id,
+            stream_mode=stream_mode,
+        )
     except Exception as exc:  # pragma: no cover - runtime safeguard
         return {
             "status": "error",
@@ -598,6 +631,7 @@ def run_server_codex_hello(
 
     codex_bin = str(codex_cfg.get("binary", "codex"))
     timeout = int(codex_cfg.get("hello_timeout_seconds", 20))
+    stream_mode = str(codex_cfg.get("log_stream_mode", "normal"))
     prompt = (
         "Laptopdagi Codex bridge salomlashuv yubordi. "
         f"Tomon: {side}. "
@@ -605,7 +639,7 @@ def run_server_codex_hello(
         "Faqat javob matnini yozing."
     )
     try:
-        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout)
+        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout, stream_mode=stream_mode)
     except Exception as exc:
         return "", "server_codex_error", {"message": f"codex invoke failed: {exc}"}
 
