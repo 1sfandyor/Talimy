@@ -10,8 +10,9 @@ export class SubmitAssignmentDto {
 
   @IsString()
   @MaxLength(500)
+  @IsOptional()
   @IsUrl()
-  fileUrl!: string
+  fileUrl?: string
 }
 
 export class GradeAssignmentSubmissionDto {

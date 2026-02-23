@@ -57,7 +57,7 @@ export const updateAssignmentSchema = z
 export const submitAssignmentSchema = z.object({
   tenantId: z.string().uuid(),
   studentId: z.string().uuid(),
-  fileUrl: z.string().url().max(500),
+  fileUrl: z.string().url().max(500).optional(),
 })
 
 export const gradeAssignmentSubmissionSchema = z.object({
