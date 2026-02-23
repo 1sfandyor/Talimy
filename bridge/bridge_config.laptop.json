@@ -74,17 +74,17 @@
   },
   "post_deploy_smoke_checks": {
     "grades_feature_smoke": [
-      "curl -fsS {{BASE_URL}}/api/health > NUL",
-      "curl -fsS \"{{BASE_URL}}/api/grades?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL",
-      "curl -fsS \"{{BASE_URL}}/api/grades/report?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL",
-      "curl -fsS \"{{BASE_URL}}/api/grades/scales?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL"
+      "curl.exe -fsS {{BASE_URL}}/api/health | Out-Null",
+      "curl.exe -fsS \"{{BASE_URL}}/api/grades?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null",
+      "curl.exe -fsS \"{{BASE_URL}}/api/grades/report?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null",
+      "curl.exe -fsS \"{{BASE_URL}}/api/grades/scales?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null"
     ],
     "exams_feature_smoke": [
-      "curl -fsS {{BASE_URL}}/api/health > NUL",
-      "curl -fsS \"{{BASE_URL}}/api/exams?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" > NUL"
+      "curl.exe -fsS {{BASE_URL}}/api/health | Out-Null",
+      "curl.exe -fsS \"{{BASE_URL}}/api/exams?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null"
     ],
     "schedule_feature_smoke": [
-      "curl -fsS {{BASE_URL}}/api/health > NUL",
+      "curl.exe -fsS {{BASE_URL}}/api/health | Out-Null",
       "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=5'; $j = $raw | ConvertFrom-Json; if (-not $j.success) { throw 'Schedule list success=false' }\"",
       "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&dayOfWeek=monday&page=1&limit=5'; $j = $raw | ConvertFrom-Json; if (-not $j.success) { throw 'Schedule day filter success=false' }\"",
       "powershell -NoProfile -Command \"$list = (curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=1') | ConvertFrom-Json; $rows = @(); if ($list.data -is [array]) { $rows = @($list.data) } elseif ($list.data -and $list.data.items) { $rows = @($list.data.items) }; if ($rows.Count -gt 0 -and $rows[0].id) { $item = (curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' ('{{BASE_URL}}/api/schedule/' + $rows[0].id + '?tenantId={{TENANT_ID}}')) | ConvertFrom-Json; if (-not $item.success) { throw 'Schedule get-by-id success=false' } }\""
