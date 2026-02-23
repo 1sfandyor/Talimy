@@ -957,6 +957,10 @@ def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dic
                 write_last_result(resp)
                 print("\n[bridge-client] result received")
                 return resp
+            dots = (dots + 1) % 4
+            print(f"\r[bridge-client] waiting for server result{'.' * dots}   ", end="", flush=True)
+            time.sleep(cfg.poll_interval_seconds)
+            continue
         if code not in (404,):
             print(f"\n[bridge-client] unexpected response {code}: {resp}")
         dots = (dots + 1) % 4
@@ -1153,16 +1157,25 @@ def run_push_ci_server_flow(
 
     job_id = trigger_server(task, commit, cfg, session_context=session_context)
     client_log("jobs", f"server_job_id={job_id}")
+    ci_status_text = "completed"
+    ci_conclusion = "success"
+    ci_message = "GitHub CI success bo'ldi, endi server tekshiruvi boshlandi."
+    if ci_result is not None:
+        ci_info = ci_result.get("github_ci", {}) if isinstance(ci_result.get("github_ci"), dict) else {}
+        if ci_info.get("skipped_no_runs"):
+            ci_conclusion = "skipped"
+            ci_message = "GitHub CI run topilmadi (skip), endi server tekshiruvi boshlandi."
+
     send_bridge_event(
         cfg,
         job_id=job_id,
         event_type="ci_status",
         task=task,
         commit=commit,
-        message="GitHub CI success bo'ldi, endi server tekshiruvi boshlandi.",
+        message=ci_message,
         workflow="GitHub Actions",
-        status="completed",
-        conclusion="success",
+        status=ci_status_text,
+        conclusion=ci_conclusion,
     )
     client_log("bridge", f"triggered server checks, job_id={job_id}")
 
