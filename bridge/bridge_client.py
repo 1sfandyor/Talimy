@@ -78,6 +78,14 @@ class Config:
     def session_context(self) -> dict[str, Any]:
         return dict(self.raw.get("session_context", {}))
 
+    @property
+    def dokploy(self) -> dict[str, Any]:
+        return dict(self.raw.get("dokploy", {}))
+
+    @property
+    def runtime_checks(self) -> dict[str, Any]:
+        return dict(self.raw.get("runtime_checks", {}))
+
 
 def load_config() -> Config:
     return Config(raw=json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
@@ -205,6 +213,181 @@ def send_bridge_event(
         return resp
     print(f"[bridge-client] bridge event failed ({code}): {resp}")
     return None
+
+
+def trigger_dokploy_deploy(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
+    dk = cfg.dokploy
+    if not bool(dk.get("enabled", False)):
+        return None
+
+    hook = str(dk.get("deploy_hook_url", "")).strip()
+    if not hook:
+        return {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": ["Dokploy deploy hook URL configured emas."],
+            "warnings": [],
+            "suggestions": ["bridge_config.json -> dokploy.deploy_hook_url ni to'ldiring."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "dokploy_deploy",
+        }
+
+    send_bridge_event(
+        cfg,
+        job_id=job_id,
+        event_type="dokploy_status",
+        task=task,
+        commit=commit,
+        message="Dokploy deploy hook yuborilyapti.",
+        workflow="Dokploy",
+        status="in_progress",
+    )
+
+    headers: dict[str, str] = {}
+    secret = str(dk.get("auth_header_value", "")).strip()
+    header_name = str(dk.get("auth_header_name", "")).strip()
+    if secret and header_name:
+        headers[header_name] = secret
+
+    try:
+        req = request.Request(hook, data=b"", method="POST")
+        for k, v in headers.items():
+            req.add_header(k, v)
+        with request.urlopen(req, timeout=int(dk.get("request_timeout_seconds", cfg.request_timeout_seconds))) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            send_bridge_event(
+                cfg,
+                job_id=job_id,
+                event_type="dokploy_status",
+                task=task,
+                commit=commit,
+                message="Dokploy deploy hook accepted.",
+                workflow="Dokploy",
+                status="completed",
+                conclusion="success",
+            )
+            return {
+                "status": "success",
+                "response_status": resp.status,
+                "response_body": body[:1000],
+            }
+    except Exception as exc:
+        send_bridge_event(
+            cfg,
+            job_id=job_id,
+            event_type="dokploy_status",
+            task=task,
+            commit=commit,
+            message="Dokploy deploy hook xato bo'ldi, men uni tuzatib senga qayta yuboraman",
+            workflow="Dokploy",
+            status="completed",
+            conclusion="failure",
+        )
+        return {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": [f"Dokploy deploy hook failed: {exc}"],
+            "warnings": [],
+            "suggestions": ["Dokploy deploy hook URL/headers ni tekshiring."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "dokploy_deploy",
+        }
+
+
+def run_runtime_health_checks(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
+    rc = cfg.runtime_checks
+    if not bool(rc.get("enabled", False)):
+        return None
+
+    urls = [u for u in rc.get("urls", []) if isinstance(u, dict) and str(u.get("url", "")).strip()]
+    if not urls:
+        return None
+
+    timeout_seconds = int(rc.get("timeout_seconds", 300))
+    interval_seconds = int(rc.get("poll_interval_seconds", 5))
+    request_timeout = int(rc.get("request_timeout_seconds", cfg.request_timeout_seconds))
+
+    pending = {str(u.get("name") or u["url"]): dict(u) for u in urls}
+    last_errors: dict[str, str] = {}
+    started = time.time()
+
+    for name in pending:
+        send_bridge_event(
+            cfg,
+            job_id=job_id,
+            event_type="runtime_status",
+            task=task,
+            commit=commit,
+            message=f"{name} health check boshlandi.",
+            workflow=name,
+            status="queued",
+        )
+
+    while time.time() - started < timeout_seconds:
+        completed_now: list[str] = []
+        for name, item in list(pending.items()):
+            url = str(item.get("url", ""))
+            expect_status = int(item.get("expect_status", 200))
+            try:
+                req = request.Request(url, method="GET")
+                with request.urlopen(req, timeout=request_timeout) as resp:
+                    status_code = int(resp.status)
+                    if status_code == expect_status:
+                        send_bridge_event(
+                            cfg,
+                            job_id=job_id,
+                            event_type="runtime_status",
+                            task=task,
+                            commit=commit,
+                            message=f"{name} OK ({status_code})",
+                            workflow=name,
+                            status="completed",
+                            conclusion="success",
+                        )
+                        completed_now.append(name)
+                    else:
+                        last_errors[name] = f"unexpected status {status_code}, expected {expect_status}"
+            except Exception as exc:
+                last_errors[name] = str(exc)
+
+        for name in completed_now:
+            pending.pop(name, None)
+
+        if not pending:
+            return {
+                "status": "success",
+                "checks": [{"name": str(u.get("name") or u["url"]), "url": u["url"]} for u in urls],
+            }
+
+        time.sleep(interval_seconds)
+
+    for name in pending:
+        send_bridge_event(
+            cfg,
+            job_id=job_id,
+            event_type="runtime_status",
+            task=task,
+            commit=commit,
+            message=f"{name} runtime check timeout/failure",
+            workflow=name,
+            status="completed",
+            conclusion="failure",
+        )
+    return {
+        "status": "failure",
+        "tests_passed": False,
+        "errors": [f"Runtime health check failed: {name}: {last_errors.get(name, 'timeout')}" for name in pending],
+        "warnings": [],
+        "suggestions": ["Dokploy logs va domain health endpointlarni tekshiring."],
+        "next_action": "fix_required",
+        "task": task,
+        "commit": commit,
+        "stage": "runtime_health",
+    }
 
 
 def repo_slug_from_git_remote(repo: Path) -> str | None:
@@ -672,6 +855,20 @@ def run_push_ci_server_flow(task: str, cfg: Config, *, watch: bool = False) -> i
             write_last_result(ci_result)
             send_telegram_notification(ci_result, cfg)
             return summarize_result(ci_result)
+
+    deploy_job_id = f"deploy-{uuid.uuid4().hex}"
+    print(f"[bridge-client] deploy_job_id={deploy_job_id}")
+    dokploy_result = trigger_dokploy_deploy(task, commit, cfg, deploy_job_id)
+    if dokploy_result is not None and dokploy_result.get("status") == "failure":
+        write_last_result(dokploy_result)
+        send_telegram_notification(dokploy_result, cfg)
+        return summarize_result(dokploy_result)
+
+    runtime_result = run_runtime_health_checks(task, commit, cfg, deploy_job_id)
+    if runtime_result is not None and runtime_result.get("status") == "failure":
+        write_last_result(runtime_result)
+        send_telegram_notification(runtime_result, cfg)
+        return summarize_result(runtime_result)
 
     job_id = trigger_server(task, commit, cfg, session_context=session_context)
     print(f"[bridge-client] server_job_id={job_id}")

@@ -17,6 +17,7 @@ Bu bridge Talimy workflow uchun moslashtirilgan:
 - Server checklar config orqali mapping qilinadi (`api`, `web`, `default`)
 - `task_check_mapping` orqali `docReja` task raqamiga qarab check set tanlanadi (masalan `2.x -> api`)
 - GitHub Actions CI holatini `gh` CLI orqali poll qiladi (pushdan keyin)
+- (Ixtiyoriy) Dokploy deploy hook trigger qiladi va runtime health check qiladi
 - Telegram botga task yakuni bo'yicha xabar yuborishi mumkin
 - `TASKS.md` checkbox formatiga bog'lanmagan
 
@@ -122,8 +123,10 @@ Server `/events?job_id=...` endpoint event timeline qaytaradi:
 1. `git push`
 2. GitHub Actions CI wait (`github_ci` config bo'yicha)
 3. CI success bo'lsa bridge server trigger
-4. Server deterministic checks + optional server Codex review
-5. Telegram notify (yoqilgan bo'lsa)
+4. (Ixtiyoriy) Dokploy deploy hook trigger
+5. (Ixtiyoriy) Runtime health checks (`api/web/platform`)
+6. Server deterministic checks + optional server Codex review
+7. Telegram notify (yoqilgan bo'lsa)
 
 CI polling paytida client har workflow status o'zgarishini (`queued/in_progress/completed`) serverga event qilib yuboradi va server `ack` qaytaradi:
 
@@ -155,6 +158,10 @@ CI/Dokploy verification alohida qoladi; bridge local/server smoke checks uchun i
 - `telegram.enabled`
 - `telegram.bot_token`
 - `telegram.chat_id`
+- `dokploy.enabled`
+- `dokploy.deploy_hook_url`
+- `runtime_checks.enabled`
+- `runtime_checks.urls[]`
 
 ## 7) Codex session context (ixtiyoriy, tavsiya etiladi)
 

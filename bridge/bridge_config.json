@@ -20,6 +20,24 @@
     "bot_token": "",
     "chat_id": ""
   },
+  "dokploy": {
+    "enabled": false,
+    "deploy_hook_url": "",
+    "auth_header_name": "",
+    "auth_header_value": "",
+    "request_timeout_seconds": 20
+  },
+  "runtime_checks": {
+    "enabled": false,
+    "timeout_seconds": 300,
+    "poll_interval_seconds": 5,
+    "request_timeout_seconds": 15,
+    "urls": [
+      { "name": "api-health", "url": "https://api.talimy.space/api/health", "expect_status": 200 },
+      { "name": "web", "url": "https://talimy.space", "expect_status": 200 },
+      { "name": "platform", "url": "https://platform.talimy.space", "expect_status": 200 }
+    ]
+  },
   "session_context": {
     "enabled": false,
     "path": "C:/Users/isfan/.codex/sessions/2026/02/22/rollout-YYYY-MM-DD-SESSION.jsonl",

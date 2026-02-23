@@ -488,6 +488,21 @@ class Handler(BaseHTTPRequestHandler):
                     ack = f"{event_payload['workflow']} xato bo'ldi, tuzatib qayta yuboring."
                 elif status in {"queued", "in_progress", "waiting"}:
                     ack = f"{event_payload['workflow']} kuzatilyapti, kutib turaman."
+            elif event_type == "dokploy_status":
+                conclusion = event_payload["conclusion"].lower()
+                status = event_payload["status"].lower()
+                if conclusion == "success":
+                    ack = "Dokploy deploy qabul qilindi, runtime natijani kutib turaman."
+                elif conclusion and conclusion != "success":
+                    ack = "Dokploy deploy xato bo'ldi, tuzatib qayta yuboring."
+                elif status in {"queued", "in_progress", "waiting"}:
+                    ack = "Dokploy deploy ketayapti, kutib turaman."
+            elif event_type == "runtime_status":
+                conclusion = event_payload["conclusion"].lower()
+                if conclusion == "success":
+                    ack = f"{event_payload['workflow']} runtime OK, davom eting."
+                elif conclusion == "failure":
+                    ack = f"{event_payload['workflow']} runtime xato, tuzatib qayta yuboring."
 
             self._json(200, {"status": "ok", "ack": ack, "event_type": event_type, "job_id": job_id})
             return
