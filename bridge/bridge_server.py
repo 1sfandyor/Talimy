@@ -358,32 +358,67 @@ def run_codex_prompt(
             stderr=subprocess.PIPE,
             text=True,
         )
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        io_lock = threading.Lock()
+
+        def _reader(stream: Any, kind: str) -> None:
+            if stream is None:
+                return
+            while True:
+                chunk = stream.readline()
+                if chunk == "":
+                    break
+                with io_lock:
+                    if kind == "stdout":
+                        stdout_chunks.append(chunk)
+                    else:
+                        stderr_chunks.append(chunk)
+                line = chunk.strip()
+                if not line:
+                    continue
+                if kind == "stdout":
+                    # Avoid dumping full JSON payloads to server logs.
+                    if line.startswith("{") or line.startswith("["):
+                        server_log("codex", f"stdout job={job_id} (json chunk {len(chunk)} chars)")
+                    else:
+                        server_log("codex", f"stdout job={job_id} {line[:240]}")
+                else:
+                    server_log("codex", f"stderr job={job_id} {line[:240]}")
+
+        t_out = threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True)
+        t_err = threading.Thread(target=_reader, args=(proc.stderr, "stderr"), daemon=True)
+        t_out.start()
+        t_err.start()
         started = time.time()
         heartbeat_s = 5
         while True:
-            try:
-                stdout, stderr = proc.communicate(timeout=1)
-                result = subprocess.CompletedProcess(args=args, returncode=proc.returncode, stdout=stdout, stderr=stderr)
+            rc = proc.poll()
+            elapsed = int(time.time() - started)
+            if rc is not None:
                 break
-            except subprocess.TimeoutExpired:
-                elapsed = int(time.time() - started)
-                if elapsed > 0 and elapsed % heartbeat_s == 0:
-                    server_log("codex", f"invoke waiting job={job_id} elapsed={elapsed}s")
-                if time.time() - started > timeout:
-                    proc.kill()
-                    stdout, stderr = proc.communicate()
-                    result = subprocess.CompletedProcess(
-                        args=args,
-                        returncode=124,
-                        stdout=stdout,
-                        stderr=((stderr or "") + f"\nTimeout after {timeout}s").strip(),
-                    )
-                    break
+            if elapsed > 0 and elapsed % heartbeat_s == 0:
+                with io_lock:
+                    out_len = sum(len(x) for x in stdout_chunks)
+                    err_len = sum(len(x) for x in stderr_chunks)
+                server_log("codex", f"invoke waiting job={job_id} elapsed={elapsed}s stdout_chars={out_len} stderr_chars={err_len}")
+            if time.time() - started > timeout:
+                proc.kill()
+                break
+            time.sleep(1)
+        t_out.join(timeout=2)
+        t_err.join(timeout=2)
+        with io_lock:
+            stdout = "".join(stdout_chunks)
+            stderr = "".join(stderr_chunks)
+        rc = proc.poll()
+        if rc is None:
+            rc = 124
+        if rc == 124 and f"Timeout after {timeout}s" not in stderr:
+            stderr = ((stderr or "") + f"\nTimeout after {timeout}s").strip()
+        result = subprocess.CompletedProcess(args=args, returncode=rc, stdout=stdout, stderr=stderr)
         last_result = result
         server_log("codex", f"invoke result job={job_id} rc={result.returncode}")
-        if (result.stderr or "").strip():
-            first_line = (result.stderr or "").strip().splitlines()[0][:240]
-            server_log("codex", f"stderr job={job_id} {first_line}")
         stderr_l = (result.stderr or "").lower()
         if result.returncode == 0:
             return result
