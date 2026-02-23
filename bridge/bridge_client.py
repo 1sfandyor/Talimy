@@ -581,7 +581,7 @@ def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
             "Generate deterministic validation commands appropriate for this stage.\n"
         ),
     )
-    max_cmds = int(cfg.dynamic_smoke.get("max_commands", 8) or 8)
+    max_cmds = int(cfg.dynamic_smoke.get("max_commands", 4) or 4)
     return (
         "You are generating smoke-check shell commands for Talimy bridge automation.\n"
         "Before deciding commands, read and follow project rules from AGENTS.md, docReja/Reja.md, and docReja/Documentation.html.\n"
@@ -591,9 +591,12 @@ def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
         "Constraints:\n"
         "- Output JSON only.\n"
         f"- Return at most {max_cmds} commands.\n"
+        "- Keep commands short and compact (prefer <= 500 chars each).\n"
+        "- Avoid long inline PowerShell scripts unless absolutely necessary.\n"
+        "- Prefer lightweight read-only checks; 2-4 commands are enough.\n"
         "- Commands must be safe for automation; no git push/pull/reset/checkout, no deploy commands.\n"
         "- If exact feature smoke cannot be inferred reliably, return a conservative but relevant smoke list and explain in notes.\n\n"
-        "Return format:\n"
+        "Return format (strict JSON, no markdown fences, no extra text):\n"
         "{\n"
         '  "commands": ["..."],\n'
         '  "notes": "short rationale"\n'
@@ -623,11 +626,16 @@ def _generate_dynamic_smoke_commands(task: str, cfg: Config, stage: str) -> dict
             "errors": [f"Dynamic smoke generation codex failed (rc={res.returncode})", detail[:1500]],
         }
 
-    parsed = parse_json_object_from_text(res.stdout or "")
+    stdout_text = res.stdout or ""
+    parsed = parse_json_object_from_text(stdout_text)
     if not parsed:
+        maybe_truncated = ('"commands"' in stdout_text) and not stdout_text.strip().endswith("}")
         return {
             "ok": False,
-            "errors": ["Dynamic smoke generator JSON qaytarmadi.", (res.stdout or "").strip()[:1500]],
+            "errors": [
+                "Dynamic smoke generator JSON qaytarmadi." + (" (stdout truncated/invalid bo'lishi mumkin)" if maybe_truncated else ""),
+                stdout_text.strip()[:1500],
+            ],
         }
 
     raw_commands = parsed.get("commands", [])
@@ -649,6 +657,8 @@ def _generate_dynamic_smoke_commands(task: str, cfg: Config, stage: str) -> dict
         if stage == "post_deploy_smoke":
             if "curl " in lowered and ("{{base_url}}" not in lowered):
                 return {"ok": False, "errors": ["Dynamic post_deploy_smoke curl commandida {{BASE_URL}} placeholder yo'q.", cmd]}
+        if len(cmd) > 900:
+            return {"ok": False, "errors": ["Dynamic smoke command juda uzun (generatorni qisqaroq commandlar bilan qayta uring).", cmd[:900]]}
 
     notes = str(parsed.get("notes", "")).strip()
     client_log("bridge", f"[{stage}] dynamic smoke generated commands={len(commands)}")
@@ -2118,17 +2128,18 @@ def run_task_pipeline_with_retries(
     max_attempts = max(1, int(af.get("max_retries", 2)) + 1) if bool(af.get("enabled", False)) else 1
 
     for attempt in range(max_attempts):
+        current_cfg = load_config()
         if attempt > 0:
             client_log("jobs", f"retry attempt={attempt + 1}/{max_attempts}")
         rc = run_push_ci_server_flow(
             task,
-            cfg,
+            current_cfg,
             watch=watch,
             session_id_override=session_id_override,
             disable_session_context=disable_session_context,
         )
         if rc == 0:
-            _maybe_mark_reja_and_push(task, cfg)
+            _maybe_mark_reja_and_push(task, current_cfg)
             return 0
 
         failure_result = read_last_result() or {
@@ -2138,7 +2149,7 @@ def run_task_pipeline_with_retries(
             "errors": ["Bridge flow failed but no structured result file found."],
             "stage": "bridge_client",
         }
-        if not maybe_auto_fix_failure(task, cfg, failure_result, attempt):
+        if not maybe_auto_fix_failure(task, current_cfg, failure_result, attempt):
             return rc
 
     return 1
