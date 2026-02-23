@@ -74,20 +74,20 @@
   },
   "post_deploy_smoke_checks": {
     "grades_feature_smoke": [
-      "curl.exe -fsS {{BASE_URL}}/api/health | Out-Null",
-      "curl.exe -fsS \"{{BASE_URL}}/api/grades?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null",
-      "curl.exe -fsS \"{{BASE_URL}}/api/grades/report?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null",
-      "curl.exe -fsS \"{{BASE_URL}}/api/grades/scales?tenantId={{TENANT_ID}}\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null"
+      "curl -fsS {{BASE_URL}}/api/health >/dev/null",
+      "curl -fsS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/grades?tenantId={{TENANT_ID}}&page=1&limit=10\" >/dev/null",
+      "curl -fsS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/grades/report?tenantId={{TENANT_ID}}\" >/dev/null",
+      "curl -fsS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/grades/scales?tenantId={{TENANT_ID}}\" >/dev/null"
     ],
     "exams_feature_smoke": [
-      "curl.exe -fsS {{BASE_URL}}/api/health | Out-Null",
-      "curl.exe -fsS \"{{BASE_URL}}/api/exams?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null"
+      "curl -fsS {{BASE_URL}}/api/health >/dev/null",
+      "curl -fsS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/exams?tenantId={{TENANT_ID}}&page=1&limit=10\" >/dev/null"
     ],
     "schedule_feature_smoke": [
-      "curl.exe -fsS {{BASE_URL}}/api/health -w \"`nHTTP:%{http_code}`n\" | Out-String",
-      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=5' -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $bodyJson = (($raw -split '\\r?\\n') | Where-Object { $_ -notmatch '^HTTP:[1-5]\\d\\d$' }) -join \"\"\"`n\"\"\"; $bodyJson = $bodyJson.Trim(); $j = $bodyJson | ConvertFrom-Json; if (-not $j.success) { $body = $bodyJson; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule list success=false | body: ' + $body) }\"",
-      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&dayOfWeek=monday&page=1&limit=5' -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $bodyJson = (($raw -split '\\r?\\n') | Where-Object { $_ -notmatch '^HTTP:[1-5]\\d\\d$' }) -join \"\"\"`n\"\"\"; $bodyJson = $bodyJson.Trim(); $j = $bodyJson | ConvertFrom-Json; if (-not $j.success) { $body = $bodyJson; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule day filter success=false | body: ' + $body) }\"",
-      "powershell -NoProfile -Command \"$rawList = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=1' -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $listJson = (($rawList -split '\\r?\\n') | Where-Object { $_ -notmatch '^HTTP:[1-5]\\d\\d$' }) -join \"\"\"`n\"\"\"; $listJson = $listJson.Trim(); $list = $listJson | ConvertFrom-Json; $rows = @(); if ($list.data -is [array]) { $rows = @($list.data) } elseif ($list.data -and $list.data.items) { $rows = @($list.data.items) }; if ($rows.Count -gt 0 -and $rows[0].id) { $rawItem = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' ('{{BASE_URL}}/api/schedule/' + $rows[0].id + '?tenantId={{TENANT_ID}}') -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $itemJson = (($rawItem -split '\\r?\\n') | Where-Object { $_ -notmatch '^HTTP:[1-5]\\d\\d$' }) -join \"\"\"`n\"\"\"; $itemJson = $itemJson.Trim(); $item = $itemJson | ConvertFrom-Json; if (-not $item.success) { $body = $itemJson; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule get-by-id success=false | body: ' + $body) } }\""
+      "curl -fsS {{BASE_URL}}/api/health -o /dev/null -w 'HTTP:%{http_code}\\n'",
+      "raw=$(curl -sS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=5\" -w '\\nHTTP:%{http_code}\\n'); body=$(printf '%s' \"$raw\" | sed '/^HTTP:[0-9][0-9][0-9]$/d'); printf '%s' \"$body\" | python3 -c \"import sys,json; j=json.load(sys.stdin); assert j.get('success') is True, ('Schedule list success=false | body: ' + json.dumps(j)[:400])\"",
+      "raw=$(curl -sS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&dayOfWeek=monday&page=1&limit=5\" -w '\\nHTTP:%{http_code}\\n'); body=$(printf '%s' \"$raw\" | sed '/^HTTP:[0-9][0-9][0-9]$/d'); printf '%s' \"$body\" | python3 -c \"import sys,json; j=json.load(sys.stdin); assert j.get('success') is True, ('Schedule day filter success=false | body: ' + json.dumps(j)[:400])\"",
+      "raw=$(curl -sS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=1\" -w '\\nHTTP:%{http_code}\\n'); body=$(printf '%s' \"$raw\" | sed '/^HTTP:[0-9][0-9][0-9]$/d'); sid=$(printf '%s' \"$body\" | python3 -c \"import sys,json; j=json.load(sys.stdin); rows=((j.get('data') or {}).get('items') if isinstance(j.get('data'),dict) else j.get('data')) or []; print((rows[0] or {}).get('id','') if rows else '')\"); if [ -n \"$sid\" ]; then raw2=$(curl -sS -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" \"{{BASE_URL}}/api/schedule/$sid?tenantId={{TENANT_ID}}\" -w '\\nHTTP:%{http_code}\\n'); body2=$(printf '%s' \"$raw2\" | sed '/^HTTP:[0-9][0-9][0-9]$/d'); printf '%s' \"$body2\" | python3 -c \"import sys,json; j=json.load(sys.stdin); assert j.get('success') is True, ('Schedule get-by-id success=false | body: ' + json.dumps(j)[:400])\"; fi"
     ]
   },
   "smoke_auth": {

@@ -294,6 +294,10 @@ def _redact_sensitive_text(text: str) -> str:
     return out
 
 
+def _redact_sensitive_list(items: list[str]) -> list[str]:
+    return [_redact_sensitive_text(str(x)) for x in items]
+
+
 def http_json(
     method: str,
     url: str,
@@ -755,13 +759,15 @@ def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
     stage_rules = {
         "local_smoke": (
             "Stage = pre-push local smoke.\n"
-            "Generate ONLY local deterministic commands (PowerShell-compatible) that validate the changed feature BEFORE push.\n"
+            "Generate ONLY local deterministic commands that validate the changed feature BEFORE push.\n"
+            f"Shell target: {'PowerShell (Windows)' if os.name == 'nt' else 'POSIX sh/bash (Linux/WSL)'}.\n"
             "Allowed examples: bun lint/typecheck/test commands, local scripts, file existence checks.\n"
             "Do NOT call remote deployed endpoints in this stage.\n"
         ),
         "post_deploy_smoke": (
             "Stage = post-deploy feature smoke.\n"
-            "Generate remote API smoke commands (PowerShell-compatible curl commands) that validate the deployed feature.\n"
+            "Generate remote API smoke commands (curl-based) that validate the deployed feature.\n"
+            f"Shell target: {'PowerShell (Windows)' if os.name == 'nt' else 'POSIX sh/bash (Linux/WSL)'}.\n"
             "Use placeholders exactly where needed: {{BASE_URL}}, {{TENANT_ID}}, {{ACCESS_TOKEN}}.\n"
             "Prefer lightweight assertion-oriented smoke checks (GET list/get-by-id/health/report) and avoid destructive operations unless required.\n"
         ),
@@ -852,6 +858,8 @@ def _generate_dynamic_smoke_commands(task: str, cfg: Config, stage: str) -> dict
         if stage == "post_deploy_smoke":
             if "curl " in lowered and ("{{base_url}}" not in lowered):
                 return {"ok": False, "errors": ["Dynamic post_deploy_smoke curl commandida {{BASE_URL}} placeholder yo'q.", cmd]}
+        if os.name != "nt" and any(t in lowered for t in ["powershell ", "powershell.exe", "curl.exe", "out-null", "convertfrom-json"]):
+            return {"ok": False, "errors": ["Dynamic smoke Windows-only command qaytardi, lekin current environment Linux/WSL.", cmd]}
         if len(cmd) > 900:
             return {"ok": False, "errors": ["Dynamic smoke command juda uzun (generatorni qisqaroq commandlar bilan qayta uring).", cmd[:900]]}
 
@@ -890,6 +898,7 @@ def _run_command_set(
             "Return STRICT JSON only: {\"fixed_command\":\"...\",\"reason\":\"...\"}\n"
             "Do not return markdown.\n"
             "Keep command safe (no git push/pull/reset/checkout, no deploy commands).\n"
+            f"Shell target: {'PowerShell (Windows)' if os.name == 'nt' else 'POSIX sh/bash (Linux/WSL)'}.\n"
             "Preserve placeholders if present: {{BASE_URL}}, {{TENANT_ID}}, {{ACCESS_TOKEN}}.\n"
             f"Stage: {stage}\n"
             f"Task: {task}\n"
@@ -917,6 +926,11 @@ def _run_command_set(
         if stage == "post_deploy_smoke" and "curl " in fixed_command.lower() and "{{BASE_URL}}" not in fixed_command and "https://api.talimy.space" not in fixed_command.lower():
             client_log("bridge", f"[{stage}] smoke cmd repair rejected missing BASE_URL route context")
             return None
+        if os.name != "nt":
+            lower_fixed = fixed_command.lower()
+            if any(t in lower_fixed for t in ["powershell ", "powershell.exe", "curl.exe", "out-null", "convertfrom-json"]):
+                client_log("bridge", f"[{stage}] smoke cmd repair rejected Windows-only command in Linux/WSL env")
+                return None
         client_log("bridge", f"[{stage}] smoke cmd repair applied")
         return fixed_command
 
@@ -3166,7 +3180,7 @@ def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
     commit = str(result.get("commit", ""))[:12]
     next_action = str(result.get("next_action", "unknown"))
     stage = str(result.get("stage", ""))
-    errors = [str(x) for x in result.get("errors", [])][:5]
+    errors = _redact_sensitive_list([str(x) for x in result.get("errors", [])][:5])
     check_set = str(result.get("check_set", ""))
 
     lines = [
@@ -3585,9 +3599,9 @@ def summarize_result(result: dict[str, Any]) -> int:
     print(f"TESTS:  {'PASS' if result.get('tests_passed') else 'FAIL'}")
     print(f"TASK:   {result.get('task', '')}")
     print(f"COMMIT: {str(result.get('commit', ''))[:12]}")
-    errors = [str(x) for x in result.get("errors", [])]
-    warnings = [str(x) for x in result.get("warnings", [])]
-    suggestions = [str(x) for x in result.get("suggestions", [])]
+    errors = _redact_sensitive_list([str(x) for x in result.get("errors", [])])
+    warnings = _redact_sensitive_list([str(x) for x in result.get("warnings", [])])
+    suggestions = _redact_sensitive_list([str(x) for x in result.get("suggestions", [])])
     if errors:
         print("ERRORS:")
         for item in errors:
