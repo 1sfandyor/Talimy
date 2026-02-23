@@ -675,6 +675,8 @@ def _run_command_set(
     missing_mapping_error: str,
     missing_mapping_suggestion: str,
     command_renderer: callable | None = None,
+    event_job_id: str | None = None,
+    event_commit: str | None = None,
 ) -> dict[str, Any] | None:
     smoke_key, commands = _select_task_command_set(task, checks=checks, mapping=mapping)
     dynamic_meta: dict[str, Any] | None = None
@@ -718,6 +720,17 @@ def _run_command_set(
     errors: list[str] = []
     for command in commands:
         rendered = command_renderer(command) if command_renderer else command
+        if stage == "post_deploy_smoke" and event_job_id:
+            send_bridge_event(
+                cfg,
+                job_id=event_job_id,
+                event_type="feature_smoke_status",
+                task=task,
+                commit=event_commit or "",
+                workflow=str(smoke_key or "feature-smoke"),
+                status="in_progress",
+                message=f"Smoke cmd start: {rendered[:180]}",
+            )
         client_log("bridge", f"[{stage}] start cmd={rendered}")
         started = time.time()
         res = run_shell(rendered, repo)
@@ -732,6 +745,18 @@ def _run_command_set(
             }
         )
         client_log("bridge", f"[{stage}] done rc={res.returncode} dur={duration}s")
+        if stage == "post_deploy_smoke" and event_job_id:
+            send_bridge_event(
+                cfg,
+                job_id=event_job_id,
+                event_type="feature_smoke_status",
+                task=task,
+                commit=event_commit or "",
+                workflow=str(smoke_key or "feature-smoke"),
+                status="completed",
+                conclusion="success" if res.returncode == 0 else "failure",
+                message=f"Smoke cmd done rc={res.returncode} dur={duration}s: {rendered[:140]}",
+            )
         if res.returncode != 0:
             errors.append(f"{stage} failed: {rendered}")
             detail = (res.stderr or res.stdout or "").strip()
@@ -1353,6 +1378,8 @@ def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: s
         missing_mapping_error="Task {task_no} uchun explicit post-deploy feature smoke mapping topilmadi.",
         missing_mapping_suggestion="bridge_config.laptop.json ichiga post_deploy_smoke_mapping/checks qo'shing.",
         command_renderer=lambda cmd: _render_smoke_command(cmd, ctx),
+        event_job_id=job_id,
+        event_commit=commit,
     )
     if result is None:
         return None

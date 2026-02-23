@@ -351,13 +351,34 @@ def run_codex_prompt(
     last_result: subprocess.CompletedProcess[str] | None = None
     for args in variants:
         server_log("codex", f"invoke job={job_id} variant={' '.join(args[:4])} ...")
-        result = subprocess.run(
+        proc = subprocess.Popen(
             args,
             cwd=str(cwd),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
         )
+        started = time.time()
+        heartbeat_s = 5
+        while True:
+            try:
+                stdout, stderr = proc.communicate(timeout=1)
+                result = subprocess.CompletedProcess(args=args, returncode=proc.returncode, stdout=stdout, stderr=stderr)
+                break
+            except subprocess.TimeoutExpired:
+                elapsed = int(time.time() - started)
+                if elapsed > 0 and elapsed % heartbeat_s == 0:
+                    server_log("codex", f"invoke waiting job={job_id} elapsed={elapsed}s")
+                if time.time() - started > timeout:
+                    proc.kill()
+                    stdout, stderr = proc.communicate()
+                    result = subprocess.CompletedProcess(
+                        args=args,
+                        returncode=124,
+                        stdout=stdout,
+                        stderr=((stderr or "") + f"\nTimeout after {timeout}s").strip(),
+                    )
+                    break
         last_result = result
         server_log("codex", f"invoke result job={job_id} rc={result.returncode}")
         if (result.stderr or "").strip():
