@@ -235,6 +235,19 @@ def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
     }
 
 
+def run_command_logged(command: str, cwd: Path, timeout: int = 300, *, job_id: str = "-") -> dict[str, Any]:
+    server_log("bridge", f"check start job={job_id} cmd={command}")
+    res = run_command(command, cwd, timeout=timeout)
+    server_log(
+        "bridge",
+        f"check done  job={job_id} rc={res['returncode']} dur={res['duration_seconds']}s cmd={command}",
+    )
+    if res["returncode"] != 0 and str(res.get("stderr") or "").strip():
+        first_line = str(res["stderr"]).strip().splitlines()[0][:240]
+        server_log("bridge", f"check stderr job={job_id} {first_line}")
+    return res
+
+
 TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
 SERVICE_TOKEN_RE = re.compile(r"\{\{service:(?P<alias>[a-zA-Z0-9_-]+)\}\}")
 
@@ -311,6 +324,7 @@ def run_codex_prompt(
     *,
     cwd: Path,
     timeout: int,
+    job_id: str = "-",
 ) -> subprocess.CompletedProcess[str]:
     """Run codex prompt with CLI-compat fallback across versions."""
     variants = [
@@ -322,6 +336,7 @@ def run_codex_prompt(
     ]
     last_result: subprocess.CompletedProcess[str] | None = None
     for args in variants:
+        server_log("codex", f"invoke job={job_id} variant={' '.join(args[:4])} ...")
         result = subprocess.run(
             args,
             cwd=str(cwd),
@@ -330,6 +345,10 @@ def run_codex_prompt(
             timeout=timeout,
         )
         last_result = result
+        server_log("codex", f"invoke result job={job_id} rc={result.returncode}")
+        if (result.stderr or "").strip():
+            first_line = (result.stderr or "").strip().splitlines()[0][:240]
+            server_log("codex", f"stderr job={job_id} {first_line}")
         stderr_l = (result.stderr or "").lower()
         if result.returncode == 0:
             return result
@@ -358,6 +377,7 @@ def run_server_codex_review(
 
     codex_bin = str(codex_cfg.get("binary", "codex"))
     timeout = int(codex_cfg.get("timeout_seconds", 300))
+    job_id = str(trigger.get("job_id") or "-")
 
     session_ctx = trigger.get("session_context") if isinstance(trigger.get("session_context"), dict) else {}
     session_excerpt = str(session_ctx.get("excerpt") or "").strip()
@@ -401,7 +421,8 @@ Qilish kerak:
 """.strip()
 
     try:
-        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout)
+        server_log("codex", f"review start job={job_id} mode={mode}")
+        result = run_codex_prompt(codex_bin, prompt, cwd=workdir, timeout=timeout, job_id=job_id)
     except Exception as exc:  # pragma: no cover - runtime safeguard
         return {
             "status": "error",
@@ -431,6 +452,7 @@ Qilish kerak:
         }
 
     parsed["codex_returncode"] = result.returncode
+    server_log("codex", f"review parsed job={job_id} status={parsed.get('status', 'unknown')}")
     return parsed
 
 
@@ -503,7 +525,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     check_errors: list[str] = []
     for cmd in checks:
         rendered_cmd = render_check_command(cmd, config, workdir)
-        res = run_command(rendered_cmd, workdir, timeout=1200)
+        res = run_command_logged(rendered_cmd, workdir, timeout=1200, job_id=job_id)
         if rendered_cmd != cmd:
             res["command_template"] = cmd
         check_results.append(res)
