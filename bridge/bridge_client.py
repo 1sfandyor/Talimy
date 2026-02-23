@@ -290,11 +290,18 @@ def http_json(
 
 
 def run_git(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=str(cwd), capture_output=True, text=True)
+    return subprocess.run(command, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def run_cmd(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=None if cwd is None else str(cwd), capture_output=True, text=True)
+    return subprocess.run(
+        command,
+        cwd=None if cwd is None else str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def run_shell(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -304,8 +311,18 @@ def run_shell(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
             cwd=str(cwd),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
-    return subprocess.run(command, cwd=str(cwd), shell=True, capture_output=True, text=True)
+    return subprocess.run(
+        command,
+        cwd=str(cwd),
+        shell=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def current_commit(cwd: Path) -> str:
@@ -817,7 +834,15 @@ def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) ->
     last: subprocess.CompletedProcess[str] | None = None
     for args in variants:
         try:
-            res = subprocess.run(args, cwd=str(repo), capture_output=True, text=True, timeout=timeout_seconds)
+            res = subprocess.run(
+                args,
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                encoding="utf-8",
+                errors="replace",
+            )
         except FileNotFoundError:
             raise
         last = res
