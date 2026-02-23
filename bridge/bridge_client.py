@@ -325,6 +325,16 @@ def run_shell(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def run_shell_or_direct(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    if os.name == "nt":
+        m = re.match(r'^\s*(powershell(?:\.exe)?)\s+-NoProfile\s+-Command\s+"([\s\S]*)"\s*$', command, re.IGNORECASE)
+        if m:
+            exe = m.group(1)
+            script = m.group(2)
+            return run_cmd([exe, "-NoProfile", "-Command", script], cwd)
+    return run_shell(command, cwd)
+
+
 def current_commit(cwd: Path) -> str:
     res = run_git(["git", "rev-parse", "HEAD"], cwd)
     if res.returncode != 0:
@@ -733,7 +743,7 @@ def _run_command_set(
             )
         client_log("bridge", f"[{stage}] start cmd={rendered}")
         started = time.time()
-        res = run_shell(rendered, repo)
+        res = run_shell_or_direct(rendered, repo)
         duration = round(time.time() - started, 2)
         check_results.append(
             {
