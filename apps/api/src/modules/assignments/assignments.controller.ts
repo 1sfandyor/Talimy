@@ -125,16 +125,14 @@ export class AssignmentsController {
     @Param("id") id: string,
     @Query("tenantId") tenantId: string,
     @Body(new ZodValidationPipe(submitAssignmentSchema)) payload: SubmitAssignmentDto,
-    @UploadedFile() file?: { originalname?: string }
+    @UploadedFile() file?: { originalname?: string; buffer?: Buffer }
   ) {
     if (!payload.fileUrl && !file) {
       throw new BadRequestException("Either fileUrl or multipart file is required")
     }
 
     if (file && !payload.fileUrl) {
-      throw new BadRequestException(
-        "Direct assignment file upload is not configured yet. Upload the file via /upload and submit the returned fileUrl."
-      )
+      return this.assignmentsService.submitWithUploadedFile(tenantId, id, payload, file)
     }
 
     return this.assignmentsService.submit(tenantId, id, payload)

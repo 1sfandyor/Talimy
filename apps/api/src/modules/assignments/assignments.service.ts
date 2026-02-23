@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common"
+import { BadRequestException, Injectable } from "@nestjs/common"
 
+import { AssignmentSubmissionFilesService } from "./assignment-submission-files.service"
 import { CreateAssignmentDto, UpdateAssignmentDto } from "./dto/create-assignment.dto"
 import { AssignmentQueryDto } from "./dto/assignment-query.dto"
 import { GradeAssignmentSubmissionDto, SubmitAssignmentDto } from "./dto/submit-assignment.dto"
@@ -7,7 +8,10 @@ import { AssignmentsRepository } from "./assignments.repository"
 
 @Injectable()
 export class AssignmentsService {
-  constructor(private readonly repository: AssignmentsRepository) {}
+  constructor(
+    private readonly repository: AssignmentsRepository,
+    private readonly assignmentSubmissionFilesService: AssignmentSubmissionFilesService
+  ) {}
 
   list(query: AssignmentQueryDto) {
     return this.repository.list(query)
@@ -31,6 +35,32 @@ export class AssignmentsService {
 
   submit(tenantId: string, assignmentId: string, payload: SubmitAssignmentDto) {
     return this.repository.submit(tenantId, assignmentId, payload)
+  }
+
+  async submitWithUploadedFile(
+    tenantId: string,
+    assignmentId: string,
+    payload: SubmitAssignmentDto,
+    file: { buffer?: Buffer; originalname?: string }
+  ) {
+    if (!file.buffer) {
+      throw new BadRequestException("Multipart assignment file buffer is missing")
+    }
+
+    const fileUrl = await this.assignmentSubmissionFilesService.saveSubmissionFile({
+      tenantId,
+      assignmentId,
+      studentId: payload.studentId,
+      file: {
+        buffer: file.buffer,
+        originalname: file.originalname,
+      },
+    })
+
+    return this.repository.submit(tenantId, assignmentId, {
+      ...payload,
+      fileUrl,
+    })
   }
 
   listSubmissions(tenantId: string, assignmentId: string, query: AssignmentQueryDto) {
