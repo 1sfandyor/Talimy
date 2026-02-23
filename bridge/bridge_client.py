@@ -148,6 +148,10 @@ class Config:
     def reja_auto_mark(self) -> dict[str, Any]:
         return dict(self.raw.get("reja_auto_mark", {}))
 
+    @property
+    def task_smoke_policy(self) -> dict[str, Any]:
+        return dict(self.raw.get("task_smoke_policy", {}))
+
 
 def load_config() -> Config:
     config_path = resolve_config_path()
@@ -433,7 +437,28 @@ def _select_task_smoke_commands(task: str, cfg: Config) -> tuple[str | None, lis
 def run_local_task_smoke(task: str, cfg: Config) -> dict[str, Any] | None:
     smoke_key, commands = _select_task_smoke_commands(task, cfg)
     if not commands:
-        return None
+        policy = cfg.task_smoke_policy
+        require_explicit = bool(policy.get("require_explicit_for_numbered_tasks", False))
+        if not require_explicit:
+            return None
+        task_no = _extract_task_no(task)
+        if task_no is None:
+            return None
+        result = {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": [f"Task {task_no} uchun explicit task smoke mapping topilmadi."],
+            "warnings": [],
+            "suggestions": [
+                "bridge_config.laptop.json ichiga task_smoke_mapping va task_smoke_checks qo'shing."
+            ],
+            "next_action": "fix_required",
+            "stage": "local_smoke",
+            "task": task,
+            "local_smoke": {"check_set": None, "checks": []},
+        }
+        write_last_result(result)
+        return result
 
     repo = cfg.laptop_repo_path
     client_log("jobs", f"local_smoke_set={smoke_key} commands={len(commands)}")
