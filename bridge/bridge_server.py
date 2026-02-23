@@ -372,11 +372,17 @@ def run_server_codex_review(
         "Server roli: runtime inspector (Dokploy/docker service logs va runtime signal tahlili). "
         "Git pull/lint/typecheck qilma."
     )
+    runtime_review_note = (
+        "Muhim: ushbu review process_trigger ichida yakuniy bridge result yozilishidan OLDIN ishga tushishi mumkin. "
+        "Shuning uchun bridge result faylida status=running/stage=starting ko'rinsa bu normal; buni xato deb baholama. "
+        "Asosiy signal sifatida deterministic checks natijalari va runtime event/log xulosalarini bahola."
+    )
 
     prompt = f"""
 Taskni tekshir: {trigger.get('task', '')}
 Commit: {trigger.get('commit', '')}
 {mode_note}
+{runtime_review_note}
 {session_context_block}
 
 Qilish kerak:
@@ -525,9 +531,17 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     if codex_review:
         warnings.extend([str(x) for x in codex_review.get("warnings", [])])
         suggestions.extend([str(x) for x in codex_review.get("suggestions", [])])
-        if codex_review.get("status") == "failure" and not check_errors:
-            check_errors.extend([str(x) for x in codex_review.get("errors", [])])
-            tests_passed = False
+        if codex_review.get("status") == "failure":
+            review_errors = [str(x) for x in codex_review.get("errors", [])]
+            if mode == "runtime_inspector" and not check_errors:
+                if review_errors:
+                    warnings.append(
+                        "Server Codex review advisory xulosasi (runtime_inspector mode); deterministic checks source of truth sifatida qabul qilindi."
+                    )
+                    warnings.extend(review_errors)
+            elif not check_errors:
+                check_errors.extend(review_errors)
+                tests_passed = False
 
     result_payload = {
         "status": "success" if tests_passed else "failure",
