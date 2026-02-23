@@ -1230,9 +1230,6 @@ def _render_smoke_command(command: str, ctx: dict[str, str]) -> str:
 def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: str) -> dict[str, Any] | None:
     checks = cfg.post_deploy_smoke_checks
     mapping = cfg.post_deploy_smoke_mapping
-    smoke_key, commands = _select_task_command_set(task, checks=checks, mapping=mapping)
-    if not commands:
-        return None
 
     ctx_bootstrap = bootstrap_post_deploy_smoke_context(task, commit, cfg, job_id)
     if not ctx_bootstrap.get("ok"):
@@ -1263,8 +1260,8 @@ def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: s
         event_type="feature_smoke_status",
         task=task,
         commit=commit,
-        message=f"Feature smoke boshlandi ({smoke_key}).",
-        workflow=smoke_key,
+        message="Feature smoke boshlandi.",
+        workflow="feature-smoke",
         status="queued",
     )
     result = _run_command_set(
@@ -1279,6 +1276,7 @@ def run_post_deploy_feature_smoke(task: str, commit: str, cfg: Config, job_id: s
     )
     if result is None:
         return None
+    smoke_key = str((result.get("post_deploy_smoke") or {}).get("check_set") or "feature-smoke")
     ok = result.get("next_action") == "proceed"
     send_bridge_event(
         cfg,
