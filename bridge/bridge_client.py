@@ -667,6 +667,36 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
     interval_seconds = int(ci_cfg.get("poll_interval_seconds", cfg.poll_interval_seconds))
     watch_workflows = {str(x).strip() for x in ci_cfg.get("workflows", []) if str(x).strip()}
 
+    try:
+        gh_check = run_cmd(["gh", "--version"], repo)
+    except FileNotFoundError:
+        return {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": ["GitHub CLI (gh) topilmadi (PATH)."],
+            "warnings": [],
+            "suggestions": [
+                "Laptopga GitHub CLI o'rnating: https://cli.github.com/",
+                "O'rnatilgandan keyin yangi terminal oching va `gh auth status` ni tekshiring.",
+            ],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "github_ci",
+        }
+    if gh_check.returncode != 0:
+        return {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": ["GitHub CLI (gh) ishlamadi.", gh_check.stderr.strip() or gh_check.stdout.strip()],
+            "warnings": [],
+            "suggestions": ["`gh auth status` ni tekshiring va login qiling."],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": commit,
+            "stage": "github_ci",
+        }
+
     started = time.time()
     dots = 0
     last_runs: list[dict[str, Any]] = []
@@ -686,7 +716,23 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
             "--json",
             "databaseId,workflowName,status,conclusion,url,headSha,displayTitle",
         ]
-        res = run_cmd(cmd, repo)
+        try:
+            res = run_cmd(cmd, repo)
+        except FileNotFoundError:
+            return {
+                "status": "failure",
+                "tests_passed": False,
+                "errors": ["GitHub CLI (gh) topilmadi (PATH)."],
+                "warnings": [],
+                "suggestions": [
+                    "Laptopga GitHub CLI o'rnating: https://cli.github.com/",
+                    "O'rnatilgandan keyin yangi terminal oching va `gh auth status` ni tekshiring.",
+                ],
+                "next_action": "fix_required",
+                "task": task,
+                "commit": commit,
+                "stage": "github_ci",
+            }
         if res.returncode != 0:
             return {
                 "status": "failure",
