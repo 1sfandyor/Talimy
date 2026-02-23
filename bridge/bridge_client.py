@@ -45,6 +45,14 @@ def ansi_color(code: str, text: str) -> str:
 def resolve_config_path() -> Path:
     raw = os.environ.get("BRIDGE_CONFIG_PATH", "").strip()
     if not raw:
+        if DEFAULT_CONFIG_PATH.exists():
+            return DEFAULT_CONFIG_PATH
+        laptop_cfg = BASE_DIR / "bridge_config.laptop.json"
+        if laptop_cfg.exists():
+            return laptop_cfg
+        server_cfg = BASE_DIR / "bridge_config.server.json"
+        if server_cfg.exists():
+            return server_cfg
         return DEFAULT_CONFIG_PATH
     return Path(raw)
 
@@ -121,6 +129,24 @@ class Config:
     @property
     def runtime_checks(self) -> dict[str, Any]:
         return dict(self.raw.get("runtime_checks", {}))
+
+    @property
+    def task_smoke_checks(self) -> dict[str, list[str]]:
+        raw = dict(self.raw.get("task_smoke_checks", {}))
+        return {str(k): [str(x) for x in list(v)] for k, v in raw.items() if isinstance(v, list)}
+
+    @property
+    def task_smoke_mapping(self) -> dict[str, str]:
+        raw = dict(self.raw.get("task_smoke_mapping", {}))
+        return {str(k): str(v) for k, v in raw.items()}
+
+    @property
+    def auto_fix(self) -> dict[str, Any]:
+        return dict(self.raw.get("auto_fix", {}))
+
+    @property
+    def reja_auto_mark(self) -> dict[str, Any]:
+        return dict(self.raw.get("reja_auto_mark", {}))
 
 
 def load_config() -> Config:
@@ -202,6 +228,17 @@ def run_git(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def run_cmd(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=None if cwd is None else str(cwd), capture_output=True, text=True)
+
+
+def run_shell(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    if os.name == "nt":
+        return subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+        )
+    return subprocess.run(command, cwd=str(cwd), shell=True, capture_output=True, text=True)
 
 
 def current_commit(cwd: Path) -> str:
@@ -370,6 +407,204 @@ def _detect_task_key(task: str, mapping: dict[str, Any]) -> str | None:
     if "default" in mapping:
         return "default"
     return None
+
+
+def _today_iso_date() -> str:
+    return time.strftime("%Y-%m-%d")
+
+
+def _select_task_smoke_commands(task: str, cfg: Config) -> tuple[str | None, list[str]]:
+    checks = cfg.task_smoke_checks
+    mapping = cfg.task_smoke_mapping
+    if not checks:
+        return None, []
+    task_key = _detect_task_key(task, mapping) if mapping else None
+    if task_key:
+        smoke_key = mapping.get(task_key)
+        if smoke_key and smoke_key in checks:
+            return smoke_key, checks[smoke_key]
+    task_l = task.lower()
+    for key in ("api", "web", "platform", "default"):
+        if key in checks and (key == "default" or key in task_l):
+            return key, checks[key]
+    return None, []
+
+
+def run_local_task_smoke(task: str, cfg: Config) -> dict[str, Any] | None:
+    smoke_key, commands = _select_task_smoke_commands(task, cfg)
+    if not commands:
+        return None
+
+    repo = cfg.laptop_repo_path
+    client_log("jobs", f"local_smoke_set={smoke_key} commands={len(commands)}")
+    check_results: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for command in commands:
+        client_log("bridge", f"[local-smoke] start cmd={command}")
+        started = time.time()
+        res = run_shell(command, repo)
+        duration = round(time.time() - started, 2)
+        check_results.append(
+            {
+                "command": command,
+                "returncode": res.returncode,
+                "stdout": res.stdout,
+                "stderr": res.stderr,
+                "duration_seconds": duration,
+            }
+        )
+        client_log("bridge", f"[local-smoke] done rc={res.returncode} dur={duration}s")
+        if res.returncode != 0:
+            errors.append(f"Local smoke failed: {command}")
+            detail = (res.stderr or res.stdout or "").strip()
+            if detail:
+                errors.append(detail[:1200])
+            break
+
+    ok = not errors
+    result = {
+        "status": "success" if ok else "failure",
+        "tests_passed": ok,
+        "errors": errors,
+        "warnings": [],
+        "suggestions": [] if ok else ["Lokal smoke test xatosini tuzating yoki task_smoke_checks commandlarini tekshiring."],
+        "next_action": "proceed" if ok else "fix_required",
+        "stage": "local_smoke",
+        "task": task,
+        "local_smoke": {"check_set": smoke_key, "checks": check_results},
+    }
+    write_last_result(result)
+    return result
+
+
+def _extract_task_no(task: str) -> str | None:
+    m = TASK_NUMBER_RE.search(task)
+    if not m:
+        return None
+    return f"{m.group('phase')}.{m.group('task')}"
+
+
+def mark_reja_task_completed(task: str, cfg: Config) -> bool:
+    mark_cfg = cfg.reja_auto_mark
+    if not bool(mark_cfg.get("enabled", False)):
+        return False
+    task_no = _extract_task_no(task)
+    if not task_no:
+        return False
+    path = cfg.tasks_file
+    if not path.exists():
+        return False
+
+    target_date = str(mark_cfg.get("date_override", "")).strip() or _today_iso_date()
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    changed = False
+    out_lines: list[str] = []
+    row_re = re.compile(rf"^(\|\s*{re.escape(task_no)}\s*\|\s*[^|]+\|\s*)([^|]+?)(\s*\|\s*)([^|]+?)(\s*\|.*)$")
+    for line in lines:
+        m = row_re.match(line)
+        if not m:
+            out_lines.append(line)
+            continue
+        new_line = f"{m.group(1)}\U0001F7E2 Completed{m.group(3)}{target_date}{m.group(5)}"
+        out_lines.append(new_line)
+        changed = changed or (new_line != line)
+    if not changed:
+        return False
+    path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    client_log("bridge", f"Reja marked completed: {task_no} ({path})")
+    return True
+
+
+def git_commit_if_needed(cfg: Config, message: str) -> bool:
+    repo = cfg.laptop_repo_path
+    status = run_git(["git", "status", "--porcelain"], repo)
+    if status.returncode != 0:
+        return False
+    if not status.stdout.strip():
+        return False
+    add = run_git(["git", "add", str(cfg.tasks_file)], repo)
+    if add.returncode != 0:
+        return False
+    commit = run_git(["git", "commit", "-m", message], repo)
+    if commit.returncode != 0:
+        return False
+    client_log("git", f"committed: {message}")
+    return True
+
+
+def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+    repo = cfg.laptop_repo_path
+    variants = [
+        ["codex", "exec", "--color", "never", prompt],
+        ["codex", "--no-interactive", "-q", prompt],
+        ["codex", "-q", prompt],
+        ["codex", prompt],
+    ]
+    last: subprocess.CompletedProcess[str] | None = None
+    for args in variants:
+        try:
+            res = subprocess.run(args, cwd=str(repo), capture_output=True, text=True, timeout=timeout_seconds)
+        except FileNotFoundError:
+            raise
+        last = res
+        stderr_l = (res.stderr or "").lower()
+        if res.returncode == 0:
+            return res
+        if "unexpected argument '--no-interactive'" in stderr_l or "unknown option '--no-interactive'" in stderr_l:
+            continue
+        if "unexpected argument '-q'" in stderr_l or "unknown option '-q'" in stderr_l:
+            continue
+        if "unrecognized subcommand 'exec'" in stderr_l:
+            continue
+        return res
+    if last is None:
+        raise RuntimeError("codex invocation failed")
+    return last
+
+
+def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any], attempt: int) -> bool:
+    af = cfg.auto_fix
+    if not bool(af.get("enabled", False)):
+        return False
+
+    max_retries = int(af.get("max_retries", 2))
+    if attempt >= max_retries:
+        return False
+
+    timeout = int(af.get("codex_timeout_seconds", 900))
+    stage = str(failure_result.get("stage", "unknown"))
+    commit = str(failure_result.get("commit", ""))
+    errors = [str(x) for x in failure_result.get("errors", [])]
+    warnings = [str(x) for x in failure_result.get("warnings", [])][:5]
+    suggestions = [str(x) for x in failure_result.get("suggestions", [])][:5]
+
+    prompt = (
+        f"Talimy bridge auto-fix cycle. Task: {task}\n"
+        f"Failure stage: {stage}\n"
+        f"Commit: {commit}\n\n"
+        "Current structured result (source of truth):\n"
+        f"{json.dumps(failure_result, ensure_ascii=False, indent=2)}\n\n"
+        "Qilish kerak:\n"
+        "1. Xatoni tuzat (minimal-diff, best-practice)\n"
+        "2. Lokal smoke/lint/typecheck zarur bo'lsa ishlat\n"
+        "3. Kerakli o'zgarishlarni commit qil (inglizcha commit message)\n"
+        "4. Push QILMA (bridge client push qiladi)\n"
+        "5. FAQAT qisqa yakun yoz: nima tuzatding\n"
+    )
+    client_log("bridge", f"auto-fix start attempt={attempt + 1}/{max_retries} stage={stage}")
+    try:
+        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+    except FileNotFoundError:
+        client_log("bridge", "auto-fix skipped: local codex CLI topilmadi")
+        return False
+    if res.returncode != 0:
+        err = (res.stderr or res.stdout or "").strip()
+        client_log("bridge", f"auto-fix codex failed rc={res.returncode} {err[:240]}")
+        return False
+    summary = (res.stdout or "").strip().splitlines()
+    if summary:
+        client_log("bridge", f"auto-fix summary: {summary[-1][:240]}")
+    return True
 
 
 def _select_dokploy_targets(task: str, dk: dict[str, Any]) -> list[dict[str, str]]:
@@ -623,6 +858,16 @@ def repo_slug_from_git_remote(repo: Path) -> str | None:
 def write_last_result(payload: dict[str, Any]) -> None:
     LAST_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
     LAST_RESULT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def read_last_result() -> dict[str, Any] | None:
+    if not LAST_RESULT_PATH.exists():
+        return None
+    try:
+        data = json.loads(LAST_RESULT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _extract_text_from_message_content(content: Any) -> str:
@@ -1178,6 +1423,11 @@ def run_push_ci_server_flow(
     session_id_override: str | None = None,
     disable_session_context: bool = False,
 ) -> int:
+    smoke_result = run_local_task_smoke(task, cfg)
+    if smoke_result is not None and smoke_result.get("next_action") != "proceed":
+        send_telegram_notification(smoke_result, cfg)
+        return summarize_result(smoke_result)
+
     hello = bridge_hello(cfg)
     hello_reply = str(hello.get("reply") or "").strip()
     hello_src = str(hello.get("reply_source") or "").strip()
@@ -1314,6 +1564,58 @@ def run_push_ci_server_flow(
     return summarize_result(result)
 
 
+def _maybe_mark_reja_and_push(task: str, cfg: Config) -> None:
+    if not mark_reja_task_completed(task, cfg):
+        return
+    task_no = _extract_task_no(task) or "task"
+    msg = f"docs(reja): mark {task_no} completed"
+    if not git_commit_if_needed(cfg, msg):
+        return
+    try:
+        commit = push_commit(cfg)
+        client_log("git", f"pushed reja mark commit={commit[:12]}")
+    except Exception as exc:
+        client_log("bridge", f"reja mark push failed: {exc}")
+
+
+def run_task_pipeline_with_retries(
+    task: str,
+    cfg: Config,
+    *,
+    watch: bool = False,
+    session_id_override: str | None = None,
+    disable_session_context: bool = False,
+) -> int:
+    af = cfg.auto_fix
+    max_attempts = max(1, int(af.get("max_retries", 2)) + 1) if bool(af.get("enabled", False)) else 1
+
+    for attempt in range(max_attempts):
+        if attempt > 0:
+            client_log("jobs", f"retry attempt={attempt + 1}/{max_attempts}")
+        rc = run_push_ci_server_flow(
+            task,
+            cfg,
+            watch=watch,
+            session_id_override=session_id_override,
+            disable_session_context=disable_session_context,
+        )
+        if rc == 0:
+            _maybe_mark_reja_and_push(task, cfg)
+            return 0
+
+        failure_result = read_last_result() or {
+            "status": "failure",
+            "next_action": "fix_required",
+            "task": task,
+            "errors": ["Bridge flow failed but no structured result file found."],
+            "stage": "bridge_client",
+        }
+        if not maybe_auto_fix_failure(task, cfg, failure_result, attempt):
+            return rc
+
+    return 1
+
+
 def summarize_result(result: dict[str, Any]) -> int:
     print("=" * 60)
     print(f"STATUS: {str(result.get('status', 'unknown')).upper()}")
@@ -1431,7 +1733,7 @@ def main() -> int:
         except ValueError as exc:
             print(str(exc))
             return 1
-        return run_push_ci_server_flow(task, cfg, **flags)
+        return run_task_pipeline_with_retries(task, cfg, **flags)
 
     if cmd == "wait":
         if len(sys.argv) < 3:
@@ -1470,7 +1772,7 @@ def main() -> int:
         except ValueError as exc:
             print(str(exc))
             return 1
-        return run_push_ci_server_flow(task, cfg, **flags)
+        return run_task_pipeline_with_retries(task, cfg, **flags)
 
     return usage()
 

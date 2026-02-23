@@ -40,6 +40,14 @@ def ansi_color(code: str, text: str) -> str:
 def resolve_config_path() -> Path:
     raw = os.environ.get("BRIDGE_CONFIG_PATH", "").strip()
     if not raw:
+        if DEFAULT_CONFIG_PATH.exists():
+            return DEFAULT_CONFIG_PATH
+        server_cfg = BASE_DIR / "bridge_config.server.json"
+        if server_cfg.exists():
+            return server_cfg
+        laptop_cfg = BASE_DIR / "bridge_config.laptop.json"
+        if laptop_cfg.exists():
+            return laptop_cfg
         return DEFAULT_CONFIG_PATH
     return Path(raw)
 

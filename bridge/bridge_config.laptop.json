@@ -61,6 +61,31 @@
       { "name": "platform", "url": "https://platform.talimy.space", "expect_status": 200 }
     ]
   },
+  "task_smoke_mapping": {
+    "2.11": "grades_feature_smoke",
+    "2.12": "exams_feature_smoke",
+    "2.x": "api_quick_smoke"
+  },
+  "task_smoke_checks": {
+    "api_quick_smoke": ["curl -fsS https://api.talimy.space/api/health > NUL"],
+    "grades_feature_smoke": [
+      "curl -fsS https://api.talimy.space/api/health > NUL",
+      "if ($env:BRIDGE_SMOKE_TOKEN -and $env:BRIDGE_TENANT_ID) { curl -fsS \"https://api.talimy.space/api/grades?tenantId=$env:BRIDGE_TENANT_ID&page=1&limit=10\" -H \"Authorization: Bearer $env:BRIDGE_SMOKE_TOKEN\" > NUL } else { Write-Error \"missing BRIDGE_SMOKE_TOKEN/BRIDGE_TENANT_ID\"; exit 1 }"
+    ],
+    "exams_feature_smoke": [
+      "curl -fsS https://api.talimy.space/api/health > NUL",
+      "if ($env:BRIDGE_SMOKE_TOKEN -and $env:BRIDGE_TENANT_ID) { curl -fsS \"https://api.talimy.space/api/exams?tenantId=$env:BRIDGE_TENANT_ID&page=1&limit=10\" -H \"Authorization: Bearer $env:BRIDGE_SMOKE_TOKEN\" > NUL } else { Write-Error \"missing BRIDGE_SMOKE_TOKEN/BRIDGE_TENANT_ID\"; exit 1 }"
+    ]
+  },
+  "auto_fix": {
+    "enabled": false,
+    "max_retries": 2,
+    "codex_timeout_seconds": 900
+  },
+  "reja_auto_mark": {
+    "enabled": false,
+    "date_override": ""
+  },
   "session_context": {
     "enabled": true,
     "session_id": "019c86a6-24f6-76f1-b071-373c3d75b356",
