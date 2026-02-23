@@ -94,6 +94,11 @@
   "task_smoke_policy": {
     "require_explicit_for_numbered_tasks": true
   },
+  "dynamic_smoke": {
+    "enabled": true,
+    "max_commands": 8,
+    "codex_timeout_seconds": 600
+  },
   "auto_fix": {
     "enabled": true,
     "max_retries": 2,

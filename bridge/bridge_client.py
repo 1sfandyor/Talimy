@@ -30,6 +30,7 @@ REJA_ROW_RE = re.compile(
     re.UNICODE,
 )
 TASK_NUMBER_RE = re.compile(r"\b(?P<phase>\d+)\.(?P<task>\d+)\b")
+JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")
 
 
 ENV_TOKEN_RE = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
@@ -179,11 +180,34 @@ class Config:
     def smoke_auth(self) -> dict[str, Any]:
         return dict(self.raw.get("smoke_auth", {}))
 
+    @property
+    def dynamic_smoke(self) -> dict[str, Any]:
+        return dict(self.raw.get("dynamic_smoke", {}))
+
 
 def load_config() -> Config:
     config_path = resolve_config_path()
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     return Config(raw=expand_env_placeholders(raw))
+
+
+def parse_json_object_from_text(text: str) -> dict[str, Any] | None:
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        pass
+    m = JSON_OBJECT_RE.search(text)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
 
 
 def secret_fingerprint(secret: str) -> str:
@@ -440,6 +464,31 @@ def _detect_task_key(task: str, mapping: dict[str, Any]) -> str | None:
     return None
 
 
+def _git_diff_excerpt_for_prompt(cfg: Config, max_chars: int = 6000) -> str:
+    repo = cfg.laptop_repo_path
+    chunks: list[str] = []
+    cmds = [
+        ["git", "status", "--short"],
+        ["git", "show", "--stat", "--name-only", "--oneline", "-1"],
+        ["git", "diff", "--unified=1", "HEAD~1", "HEAD"],
+    ]
+    for cmd in cmds:
+        try:
+            res = run_git(cmd, repo)
+        except Exception:
+            continue
+        if res.returncode != 0:
+            continue
+        label = " ".join(cmd)
+        out = (res.stdout or "").strip()
+        if out:
+            chunks.append(f"$ {label}\n{out}")
+    joined = "\n\n".join(chunks).strip()
+    if len(joined) > max_chars:
+        joined = joined[: max_chars - 3] + "..."
+    return joined
+
+
 def _today_iso_date() -> str:
     return time.strftime("%Y-%m-%d")
 
@@ -464,6 +513,119 @@ def _select_task_command_set(
     return None, []
 
 
+def _dynamic_smoke_forbidden(command: str) -> str | None:
+    lowered = command.lower()
+    forbidden_tokens = [
+        "git push",
+        "git pull",
+        "git reset",
+        "git checkout",
+        "docker service update",
+        "docker compose up",
+        "rm -rf ",
+    ]
+    for token in forbidden_tokens:
+        if token in lowered:
+            return token
+    return None
+
+
+def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
+    diff_excerpt = _git_diff_excerpt_for_prompt(cfg, max_chars=8000) or "(git diff excerpt unavailable)"
+    stage_rules = {
+        "local_smoke": (
+            "Stage = pre-push local smoke.\n"
+            "Generate ONLY local deterministic commands (PowerShell-compatible) that validate the changed feature BEFORE push.\n"
+            "Allowed examples: bun lint/typecheck/test commands, local scripts, file existence checks.\n"
+            "Do NOT call remote deployed endpoints in this stage.\n"
+        ),
+        "post_deploy_smoke": (
+            "Stage = post-deploy feature smoke.\n"
+            "Generate remote API smoke commands (PowerShell-compatible curl commands) that validate the deployed feature.\n"
+            "Use placeholders exactly where needed: {{BASE_URL}}, {{TENANT_ID}}, {{ACCESS_TOKEN}}.\n"
+            "Prefer lightweight assertion-oriented smoke checks (GET list/get-by-id/health/report) and avoid destructive operations unless required.\n"
+        ),
+    }.get(
+        stage,
+        (
+            f"Stage = {stage}.\n"
+            "Generate deterministic validation commands appropriate for this stage.\n"
+        ),
+    )
+    max_cmds = int(cfg.dynamic_smoke.get("max_commands", 8) or 8)
+    return (
+        "You are generating smoke-check shell commands for Talimy bridge automation.\n"
+        "Before deciding commands, read and follow project rules from AGENTS.md, docReja/Reja.md, and docReja/Documentation.html.\n"
+        "Respect AGENTS.md strict rules (best-practice, minimal-diff, tenant isolation awareness, no shortcuts).\n\n"
+        f"Task: {task}\n"
+        f"{stage_rules}\n"
+        "Constraints:\n"
+        "- Output JSON only.\n"
+        f"- Return at most {max_cmds} commands.\n"
+        "- Commands must be safe for automation; no git push/pull/reset/checkout, no deploy commands.\n"
+        "- If exact feature smoke cannot be inferred reliably, return a conservative but relevant smoke list and explain in notes.\n\n"
+        "Return format:\n"
+        "{\n"
+        '  "commands": ["..."],\n'
+        '  "notes": "short rationale"\n'
+        "}\n\n"
+        "Recent repo context (git excerpt):\n"
+        f"{diff_excerpt}\n"
+    )
+
+
+def _generate_dynamic_smoke_commands(task: str, cfg: Config, stage: str) -> dict[str, Any]:
+    dyn = cfg.dynamic_smoke
+    if not bool(dyn.get("enabled", False)):
+        return {"ok": False, "errors": ["dynamic smoke disabled"]}
+
+    timeout = int(dyn.get("codex_timeout_seconds", cfg.auto_fix.get("codex_timeout_seconds", 900) or 900))
+    prompt = _build_dynamic_smoke_prompt(task, stage, cfg)
+    client_log("bridge", f"[{stage}] dynamic smoke generation start")
+    try:
+        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+    except FileNotFoundError:
+        return {"ok": False, "errors": ["Local codex CLI topilmadi (dynamic smoke generation uchun)."]}
+
+    if res.returncode != 0:
+        detail = (res.stderr or res.stdout or "").strip()
+        return {
+            "ok": False,
+            "errors": [f"Dynamic smoke generation codex failed (rc={res.returncode})", detail[:1500]],
+        }
+
+    parsed = parse_json_object_from_text(res.stdout or "")
+    if not parsed:
+        return {
+            "ok": False,
+            "errors": ["Dynamic smoke generator JSON qaytarmadi.", (res.stdout or "").strip()[:1500]],
+        }
+
+    raw_commands = parsed.get("commands", [])
+    if not isinstance(raw_commands, list):
+        return {"ok": False, "errors": ["Dynamic smoke generator `commands` list qaytarmadi."]}
+    commands = [str(x).strip() for x in raw_commands if str(x).strip()]
+    if not commands:
+        return {"ok": False, "errors": ["Dynamic smoke generator bo'sh command list qaytardi."]}
+
+    max_cmds = int(dyn.get("max_commands", 8) or 8)
+    commands = commands[:max_cmds]
+    for cmd in commands:
+        bad = _dynamic_smoke_forbidden(cmd)
+        if bad:
+            return {"ok": False, "errors": [f"Dynamic smoke command taqiqlangan token ishlatdi: {bad}", cmd]}
+        lowered = cmd.lower()
+        if stage == "local_smoke" and "curl " in lowered and ("http://" in lowered or "https://" in lowered):
+            return {"ok": False, "errors": ["Dynamic local_smoke remote curl command qaytardi (stage rule buzildi).", cmd]}
+        if stage == "post_deploy_smoke":
+            if "curl " in lowered and ("{{base_url}}" not in lowered):
+                return {"ok": False, "errors": ["Dynamic post_deploy_smoke curl commandida {{BASE_URL}} placeholder yo'q.", cmd]}
+
+    notes = str(parsed.get("notes", "")).strip()
+    client_log("bridge", f"[{stage}] dynamic smoke generated commands={len(commands)}")
+    return {"ok": True, "commands": commands, "notes": notes}
+
+
 def _run_command_set(
     *,
     task: str,
@@ -476,6 +638,16 @@ def _run_command_set(
     command_renderer: callable | None = None,
 ) -> dict[str, Any] | None:
     smoke_key, commands = _select_task_command_set(task, checks=checks, mapping=mapping)
+    dynamic_meta: dict[str, Any] | None = None
+    if not commands:
+        generated = _generate_dynamic_smoke_commands(task, cfg, stage)
+        if generated.get("ok"):
+            commands = [str(x) for x in generated.get("commands", [])]
+            smoke_key = f"dynamic:{stage}"
+            dynamic_meta = {"generated": True, "notes": str(generated.get("notes", "")).strip()}
+        elif generated.get("errors") and cfg.dynamic_smoke.get("enabled", False):
+            # Keep explicit mapping policy behavior, but surface dynamic generation failure if it was enabled.
+            dynamic_meta = {"generated": False, "errors": [str(x) for x in generated.get("errors", [])]}
     if not commands:
         policy = cfg.task_smoke_policy
         require_explicit = bool(policy.get("require_explicit_for_numbered_tasks", False))
@@ -487,7 +659,8 @@ def _run_command_set(
         result = {
             "status": "failure",
             "tests_passed": False,
-            "errors": [missing_mapping_error.format(task_no=task_no)],
+            "errors": [missing_mapping_error.format(task_no=task_no)]
+            + ([f"Dynamic smoke generation failed: {e}" for e in dynamic_meta.get("errors", [])] if dynamic_meta and dynamic_meta.get("errors") else []),
             "warnings": [],
             "suggestions": [missing_mapping_suggestion],
             "next_action": "fix_required",
@@ -526,16 +699,27 @@ def _run_command_set(
             break
 
     ok = not errors
+    warnings: list[str] = []
+    if dynamic_meta and dynamic_meta.get("generated"):
+        note = str(dynamic_meta.get("notes", "")).strip()
+        warnings.append("Dynamic smoke commands generated by laptop Codex (explicit mapping topilmadi).")
+        if note:
+            warnings.append(f"Dynamic smoke note: {note}")
+
     result = {
         "status": "success" if ok else "failure",
         "tests_passed": ok,
         "errors": errors,
-        "warnings": [],
+        "warnings": warnings,
         "suggestions": [] if ok else [f"{stage} xatosini tuzating yoki bridge config check commandlarini tekshiring."],
         "next_action": "proceed" if ok else "fix_required",
         "stage": stage,
         "task": task,
-        stage: {"check_set": smoke_key, "checks": check_results},
+        stage: {
+            "check_set": smoke_key,
+            "checks": check_results,
+            "dynamic": dynamic_meta or {"generated": False},
+        },
     }
     write_last_result(result)
     return result
@@ -660,6 +844,10 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         f"Commit: {commit}\n\n"
         "Current structured result (source of truth):\n"
         f"{json.dumps(failure_result, ensure_ascii=False, indent=2)}\n\n"
+        "Majburiy qoidalar:\n"
+        "- AGENTS.md ni o'qi va qat'iy amal qil.\n"
+        "- docReja/Reja.md va docReja/Documentation.html kontekstini hisobga ol.\n"
+        "- Best-practice first, temporary workaround qilma.\n\n"
         "Qilish kerak:\n"
         "1. Xatoni tuzat (minimal-diff, best-practice)\n"
         "2. Lokal smoke/lint/typecheck zarur bo'lsa ishlat\n"
