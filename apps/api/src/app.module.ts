@@ -17,6 +17,7 @@ import { ExamsModule } from "./modules/exams/exams.module"
 import { FinanceModule } from "./modules/finance/finance.module"
 import { GradesModule } from "./modules/grades/grades.module"
 import { ParentsModule } from "./modules/parents/parents.module"
+import { NotificationsModule } from "./modules/notifications/notifications.module"
 import { ScheduleModule } from "./modules/schedule/schedule.module"
 import { StudentsModule } from "./modules/students/students.module"
 import { TeachersModule } from "./modules/teachers/teachers.module"
@@ -33,6 +34,7 @@ import { UsersModule } from "./modules/users/users.module"
     TeachersModule,
     StudentsModule,
     ParentsModule,
+    NotificationsModule,
     ScheduleModule,
     ClassesModule,
     AttendanceModule,
