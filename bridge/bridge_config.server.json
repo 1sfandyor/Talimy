@@ -53,6 +53,7 @@
     "hello_timeout_seconds": 60,
     "log_stream_mode": "quiet"
   },
+  "server_check_timeout_seconds": 120,
   "task_check_mapping": {
     "2.x": "api_runtime",
     "3.x": "web_runtime",
@@ -81,14 +82,14 @@
     ],
     "api_runtime": [
       "docker service ps {{service:api}} --no-trunc",
-      "docker service logs --tail=200 {{service:api}}",
+      "timeout 20s docker service logs --since 10m --tail=120 {{service:api}} 2>&1 || true",
       "curl -fsS https://api.talimy.space/api/health"
     ],
     "web_runtime": [
       "docker service ps {{service:web}} --no-trunc",
-      "docker service logs --tail=200 {{service:web}}",
+      "timeout 20s docker service logs --since 10m --tail=120 {{service:web}} 2>&1 || true",
       "docker service ps {{service:platform}} --no-trunc",
-      "docker service logs --tail=200 {{service:platform}}",
+      "timeout 20s docker service logs --since 10m --tail=120 {{service:platform}} 2>&1 || true",
       "curl -fsS https://talimy.space > /dev/null",
       "curl -fsS https://platform.talimy.space > /dev/null"
     ]

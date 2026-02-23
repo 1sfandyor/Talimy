@@ -84,10 +84,10 @@
       "curl.exe -fsS \"{{BASE_URL}}/api/exams?tenantId={{TENANT_ID}}&page=1&limit=10\" -H \"Authorization: Bearer {{ACCESS_TOKEN}}\" | Out-Null"
     ],
     "schedule_feature_smoke": [
-      "curl.exe -fsS {{BASE_URL}}/api/health | Out-Null",
-      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=5'; $j = $raw | ConvertFrom-Json; if (-not $j.success) { $body = $raw; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule list success=false | body: ' + $body) }\"",
-      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&dayOfWeek=monday&page=1&limit=5'; $j = $raw | ConvertFrom-Json; if (-not $j.success) { $body = $raw; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule day filter success=false | body: ' + $body) }\"",
-      "powershell -NoProfile -Command \"$rawList = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=1'; $list = $rawList | ConvertFrom-Json; $rows = @(); if ($list.data -is [array]) { $rows = @($list.data) } elseif ($list.data -and $list.data.items) { $rows = @($list.data.items) }; if ($rows.Count -gt 0 -and $rows[0].id) { $rawItem = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' ('{{BASE_URL}}/api/schedule/' + $rows[0].id + '?tenantId={{TENANT_ID}}'); $item = $rawItem | ConvertFrom-Json; if (-not $item.success) { $body = $rawItem; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule get-by-id success=false | body: ' + $body) } }\""
+      "curl.exe -fsS {{BASE_URL}}/api/health -w \"`nHTTP:%{http_code}`n\" | Out-String",
+      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=5' -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $bodyJson = ($raw -replace '(?s)\\r?\\nHTTP:[1-5]\\d\\d\\s*$','').Trim(); $j = $bodyJson | ConvertFrom-Json; if (-not $j.success) { $body = $bodyJson; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule list success=false | body: ' + $body) }\"",
+      "powershell -NoProfile -Command \"$raw = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&dayOfWeek=monday&page=1&limit=5' -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $bodyJson = ($raw -replace '(?s)\\r?\\nHTTP:[1-5]\\d\\d\\s*$','').Trim(); $j = $bodyJson | ConvertFrom-Json; if (-not $j.success) { $body = $bodyJson; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule day filter success=false | body: ' + $body) }\"",
+      "powershell -NoProfile -Command \"$rawList = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' '{{BASE_URL}}/api/schedule?tenantId={{TENANT_ID}}&page=1&limit=1' -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $listJson = ($rawList -replace '(?s)\\r?\\nHTTP:[1-5]\\d\\d\\s*$','').Trim(); $list = $listJson | ConvertFrom-Json; $rows = @(); if ($list.data -is [array]) { $rows = @($list.data) } elseif ($list.data -and $list.data.items) { $rows = @($list.data.items) }; if ($rows.Count -gt 0 -and $rows[0].id) { $rawItem = curl.exe -sS -H 'Authorization: Bearer {{ACCESS_TOKEN}}' ('{{BASE_URL}}/api/schedule/' + $rows[0].id + '?tenantId={{TENANT_ID}}') -w \"\"\"`nHTTP:%{http_code}`n\"\"\"; $itemJson = ($rawItem -replace '(?s)\\r?\\nHTTP:[1-5]\\d\\d\\s*$','').Trim(); $item = $itemJson | ConvertFrom-Json; if (-not $item.success) { $body = $itemJson; if ($body.Length -gt 400) { $body = $body.Substring(0,400) }; throw ('Schedule get-by-id success=false | body: ' + $body) } }\""
     ]
   },
   "smoke_auth": {
@@ -107,7 +107,9 @@
   "dynamic_smoke": {
     "enabled": true,
     "max_commands": 8,
-    "codex_timeout_seconds": 600
+    "codex_timeout_seconds": 600,
+    "ai_labels_enabled": true,
+    "ai_label_timeout_seconds": 12
   },
   "auto_fix": {
     "enabled": true,
@@ -130,45 +132,5 @@
     "enabled": true,
     "binary": "codex",
     "timeout_seconds": 300
-  },
-  "task_check_mapping": {
-    "2.x": "api_runtime",
-    "3.x": "web_runtime",
-    "4.x": "web_runtime",
-    "5.x": "web_runtime",
-    "6.x": "web_runtime",
-    "7.x": "web_runtime",
-    "8.x": "web_runtime",
-    "9.x": "web_runtime",
-    "10.x": "web_runtime",
-    "11.x": "web_runtime",
-    "12.x": "web_runtime",
-    "16.x": "deploy_runtime",
-    "17.x": "deploy_runtime"
-  },
-  "service_name_patterns": {
-    "api": ["talimy-api-"],
-    "web": ["talimy-web-"],
-    "platform": ["talimy-platform-"]
-  },
-  "server_checks": {
-    "default": ["docker service ls"],
-    "deploy_runtime": [
-      "docker service ls",
-      "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\""
-    ],
-    "api_runtime": [
-      "docker service ps {{service:api}} --no-trunc",
-      "docker service logs --tail=200 {{service:api}}",
-      "curl -fsS https://api.talimy.space/api/health"
-    ],
-    "web_runtime": [
-      "docker service ps {{service:web}} --no-trunc",
-      "docker service logs --tail=200 {{service:web}}",
-      "docker service ps {{service:platform}} --no-trunc",
-      "docker service logs --tail=200 {{service:platform}}",
-      "curl -fsS https://talimy.space > /dev/null",
-      "curl -fsS https://platform.talimy.space > /dev/null"
-    ]
   }
 }

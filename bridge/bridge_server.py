@@ -88,7 +88,7 @@ class BridgeConfig:
 
     @property
     def server_mode(self) -> str:
-        return "runtime_inspector"
+        return str(self.raw.get("server_mode", "runtime_inspector"))
 
     @property
     def server_workdir(self) -> Path:
@@ -104,6 +104,10 @@ class BridgeConfig:
     @property
     def server_checks(self) -> dict[str, list[str]]:
         return {k: list(v) for k, v in dict(self.raw.get("server_checks", {})).items()}
+
+    @property
+    def server_check_timeout_seconds(self) -> int:
+        return int(self.raw.get("server_check_timeout_seconds", 240))
 
     @property
     def task_check_mapping(self) -> dict[str, str]:
@@ -232,21 +236,44 @@ def remote_log_on_server(source: str, channel: str, message: str) -> None:
 
 def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
     started_at = time.time()
-    completed = subprocess.run(
-        command,
-        cwd=str(cwd),
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return {
-        "command": command,
-        "returncode": completed.returncode,
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-        "duration_seconds": round(time.time() - started_at, 2),
-    }
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cwd),
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return {
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "duration_seconds": round(time.time() - started_at, 2),
+            "timed_out": False,
+        }
+    except subprocess.TimeoutExpired as exc:
+        stdout = ""
+        stderr = ""
+        if isinstance(exc.stdout, bytes):
+            stdout = exc.stdout.decode("utf-8", errors="replace")
+        elif isinstance(exc.stdout, str):
+            stdout = exc.stdout
+        if isinstance(exc.stderr, bytes):
+            stderr = exc.stderr.decode("utf-8", errors="replace")
+        elif isinstance(exc.stderr, str):
+            stderr = exc.stderr
+        timeout_msg = f"Command timed out after {timeout}s"
+        stderr = (stderr + ("\n" if stderr else "") + timeout_msg).strip()
+        return {
+            "command": command,
+            "returncode": 124,
+            "stdout": stdout,
+            "stderr": stderr,
+            "duration_seconds": round(time.time() - started_at, 2),
+            "timed_out": True,
+        }
 
 
 def run_command_logged(command: str, cwd: Path, timeout: int = 300, *, job_id: str = "-") -> dict[str, Any]:
@@ -256,6 +283,8 @@ def run_command_logged(command: str, cwd: Path, timeout: int = 300, *, job_id: s
         "bridge",
         f"check done  rc={res['returncode']} dur={res['duration_seconds']}s cmd={command}",
     )
+    if res.get("timed_out"):
+        server_log("bridge", f"check timeout after {timeout}s cmd={command}")
     if res["returncode"] != 0 and str(res.get("stderr") or "").strip():
         first_line = str(res["stderr"]).strip().splitlines()[0][:240]
         server_log("bridge", f"check stderr {first_line}")
@@ -427,7 +456,6 @@ def run_codex_prompt(
                             continue
                     else:
                         stream_state["stdout"]["json_notice"] = False
-                    stream_state["stdout"]["json_notice"] = False
                     server_log("codex", f"stdout {line[:240]}")
                 else:
                     if is_json_fragment:
@@ -692,7 +720,12 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     check_errors: list[str] = []
     for cmd in checks:
         rendered_cmd = render_check_command(cmd, config, workdir)
-        res = run_command_logged(rendered_cmd, workdir, timeout=1200, job_id=job_id)
+        res = run_command_logged(
+            rendered_cmd,
+            workdir,
+            timeout=config.server_check_timeout_seconds,
+            job_id=job_id,
+        )
         if rendered_cmd != cmd:
             res["command_template"] = cmd
         check_results.append(res)

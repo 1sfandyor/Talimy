@@ -259,7 +259,7 @@ def client_log(channel: str, message: str) -> None:
 
     left = ansi_color("38;5;45", "[LAPTOP]")   # turquoise
     right = ansi_color(channel_color or "37", f"[{channel}]")
-    print(f"{left}{right} {message}")
+    print(f"{left}{right} {_redact_sensitive_text(message)}")
 
 
 def server_log_on_client(channel: str, message: str) -> None:
@@ -271,7 +271,17 @@ def server_log_on_client(channel: str, message: str) -> None:
     }.get(channel_l, "33")
     left = ansi_color("38;5;208", "[SERVER]")
     right = ansi_color(channel_color, f"[{channel}]")
-    print(f"{left}{right} {message}")
+    print(f"{left}{right} {_redact_sensitive_text(message)}")
+
+
+def _redact_sensitive_text(text: str) -> str:
+    if not text:
+        return text
+    out = text
+    out = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)[A-Za-z0-9._\-]+", r"\1<redacted>", out)
+    out = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{20,}", r"\1<redacted>", out)
+    out = re.sub(r"(?i)(\"access_token\"\s*:\s*\")([^\"]+)(\")", r"\1<redacted>\3", out)
+    return out
 
 
 def http_json(
@@ -487,7 +497,7 @@ def send_bridge_event(
             "event_type": event_type,
             "task": task,
             "commit": commit,
-            "message": message,
+            "message": _redact_sensitive_text(message),
             "workflow": workflow,
             "status": status,
             "conclusion": conclusion,
@@ -588,21 +598,86 @@ def _dynamic_smoke_forbidden(command: str) -> str | None:
     return None
 
 
-def _smoke_command_label(command: str) -> str:
+def _smoke_command_label_fallback(command: str) -> str:
     c = command.lower()
     if "api/health" in c:
-        return "api-health"
+        return "API health"
     if "finance/overview" in c:
-        return "finance-overview"
+        return "Moliya overview"
     if "payments/summary" in c:
-        return "finance-payments-summary"
+        return "To'lovlar summary"
     if "/api/schedule" in c or "/schedule?" in c:
-        return "schedule-list"
+        return "Jadval ro'yxati"
     if "/classes/" in c and "/schedule" in c:
-        return "class-schedule"
+        return "Sinf jadvali"
+    if "/api/notices" in c:
+        if "-x post" in c and "-x patch" in c and "-x delete" in c:
+            return "E'lonlar CRUD"
+        if "-x post" in c and "\"priority\":\"bad\"" in c:
+            return "E'lon invalid priority"
+        if "-x post" in c:
+            return "E'lon yaratish"
+        return "E'lonlar ro'yxati"
+    if "/api/assignments" in c:
+        if "/submit" in c and "-f " in c:
+            return "Topshiriq submit (fayl)"
+        if "/stats" in c and "/assignments/" in c:
+            return "Topshiriq stats (bitta)"
+        if "/stats" in c:
+            return "Topshiriq stats"
+        if "/assignments/" in c:
+            return "Topshiriq get-by-id"
+        return "Topshiriqlar ro'yxati"
     if "convertfrom-json" in c and "report" in c:
-        return "report-json"
-    return "smoke-cmd"
+        return "Hisobot JSON"
+    return "Smoke test"
+
+
+_SMOKE_LABEL_CACHE: dict[str, str] = {}
+
+
+def _smoke_command_label(command: str, cfg: Config, stage: str) -> str:
+    cmd_key = command.strip()
+    if not cmd_key:
+        return "Smoke test"
+    if cmd_key in _SMOKE_LABEL_CACHE:
+        return _SMOKE_LABEL_CACHE[cmd_key]
+
+    dyn = cfg.dynamic_smoke
+    ai_labels_enabled = bool(dyn.get("ai_labels_enabled", True))
+    if not ai_labels_enabled or stage != "post_deploy_smoke":
+        label = _smoke_command_label_fallback(command)
+        _SMOKE_LABEL_CACHE[cmd_key] = label
+        return label
+
+    prompt = (
+        "You name a smoke-test command for terminal logs.\n"
+        "Return STRICT JSON only: {\"label\":\"...\"}\n"
+        "Rules:\n"
+        "- Human-readable Uzbek label.\n"
+        "- Very short (2-5 words).\n"
+        "- Describe test intent from command.\n"
+        "- No markdown, no extra text.\n\n"
+        f"Stage: {stage}\n"
+        f"Command: {command}\n"
+    )
+    timeout = int(dyn.get("ai_label_timeout_seconds", 12) or 12)
+    try:
+        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+        if res.returncode == 0:
+            parsed = parse_json_object_from_text(res.stdout or "")
+            if parsed:
+                candidate = str(parsed.get("label", "")).strip()
+                if candidate:
+                    label = candidate[:64]
+                    _SMOKE_LABEL_CACHE[cmd_key] = label
+                    return label
+    except Exception:
+        pass
+
+    label = _smoke_command_label_fallback(command)
+    _SMOKE_LABEL_CACHE[cmd_key] = label
+    return label
 
 
 def _extract_http_status_code(*texts: str | None) -> int | None:
@@ -877,7 +952,7 @@ def _run_command_set(
     errors: list[str] = []
     for command in commands:
         rendered = command_renderer(command) if command_renderer else command
-        test_name = _smoke_command_label(rendered)
+        test_name = _smoke_command_label(rendered, cfg, stage)
         if stage == "post_deploy_smoke" and event_job_id:
             send_bridge_event(
                 cfg,
@@ -961,7 +1036,7 @@ def _run_command_set(
                         message="Smoke cmd repaired by laptop Codex, retrying single command.",
                     )
                 repaired_rendered = command_renderer(repaired_command) if command_renderer else repaired_command
-                repaired_test_name = _smoke_command_label(repaired_rendered)
+                repaired_test_name = _smoke_command_label(repaired_rendered, cfg, stage)
                 client_log("bridge", f"[{stage}] retry repaired cmd={repaired_rendered}")
                 started2 = time.time()
                 res2 = run_shell_or_direct(repaired_rendered, repo)
