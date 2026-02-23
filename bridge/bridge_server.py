@@ -373,6 +373,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
             "session_context_meta": trigger.get("session_context", {}),
         },
     )
+    print(f"[bridge-server] job start job={job_id} task={task}")
 
     git_steps: list[dict[str, Any]] = []
 
@@ -424,6 +425,9 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         "session_context_meta": trigger.get("session_context", {}),
     }
     state.jobs.write(job_id, result_payload)
+    print(
+        f"[bridge-server] job done job={job_id} status={result_payload['status']} next_action={result_payload['next_action']}"
+    )
 
 
 def worker_loop(state: BridgeServerState) -> None:
@@ -433,6 +437,7 @@ def worker_loop(state: BridgeServerState) -> None:
             process_trigger(trigger, state)
         except Exception as exc:  # pragma: no cover - runtime safeguard
             job_id = str(trigger.get("job_id") or "unknown")
+            print(f"[bridge-server] job exception job={job_id} error={exc}")
             state.jobs.write(
                 job_id,
                 {
@@ -458,6 +463,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         return
 
+    def _console(self, message: str) -> None:
+        print(f"[bridge-server] {message}")
+
     def _json(self, code: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
         self.send_response(code)
@@ -482,6 +490,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/hello":
             params = parse_qs(parsed.query)
             side = (params.get("side") or ["unknown"])[0]
+            self._console(f"hello from {side}")
             self._json(
                 200,
                 {
@@ -551,6 +560,13 @@ class Handler(BaseHTTPRequestHandler):
                 "timestamp": int(time.time()),
             }
             self.state.events.append(job_id, event_payload)
+            msg = event_payload["message"] or "-"
+            wf = event_payload["workflow"] or "-"
+            st = event_payload["status"] or "-"
+            cc = event_payload["conclusion"] or "-"
+            self._console(
+                f"event job={job_id} type={event_type} workflow={wf} status={st} conclusion={cc} msg={msg}"
+            )
 
             ack = "Qabul qilindi."
             if event_type == "hello":
@@ -605,6 +621,7 @@ class Handler(BaseHTTPRequestHandler):
         }
         self.state.jobs.write(job_id, state_payload)
         self.state.enqueue({"task": task, "commit": commit, "job_id": job_id})
+        self._console(f"trigger queued job={job_id} task={task} commit={commit[:8]}")
         self._json(200, {"status": "triggered", "job_id": job_id, "ack": "Trigger olindi, kutib turaman."})
 
 
