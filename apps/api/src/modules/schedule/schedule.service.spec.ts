@@ -1,7 +1,8 @@
-import { strict as assert } from "node:assert"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
-import test from "node:test"
+/// <reference types="node" />
+import { strict as assert } from "assert"
+import { readFileSync } from "fs"
+import { join } from "path"
+import { test } from "node:test"
 
 const serviceFilePath = join(process.cwd(), "apps/api/src/modules/schedule/schedule.service.ts")
 const controllerFilePath = join(process.cwd(), "apps/api/src/modules/schedule/schedule.controller.ts")

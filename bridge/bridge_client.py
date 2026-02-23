@@ -160,7 +160,17 @@ class Config:
     @property
     def pre_push_checks(self) -> dict[str, list[str]]:
         raw = dict(self.raw.get("pre_push_checks", {}))
-        return {str(k): [str(x) for x in list(v)] for k, v in raw.items() if isinstance(v, list)}
+        parsed = {str(k): [str(x) for x in list(v)] for k, v in raw.items() if isinstance(v, list)}
+        for key, commands in parsed.items():
+            normalized: list[str] = []
+            for cmd in commands:
+                cmd_s = str(cmd).strip()
+                if re.match(r"^bun run typecheck\s+--filter=api(\s|$)", cmd_s, flags=re.IGNORECASE):
+                    normalized.append("bun run typecheck")
+                else:
+                    normalized.append(cmd)
+            parsed[key] = normalized
+        return parsed
 
     @property
     def pre_push_mapping(self) -> dict[str, str]:
@@ -1845,6 +1855,14 @@ def _paths_outside_allowlist(paths: list[str], allowlist: list[str]) -> list[str
     outside: list[str] = []
     for path in paths:
         norm = path.replace("\\", "/")
+        # Ignore known local-noise files so task auto-fix is not blocked by tooling artifacts
+        # or bridge-orchestrator local edits.
+        if (
+            norm == "Untitled"
+            or norm.endswith(".tsbuildinfo")
+            or norm.startswith("bridge/")
+        ):
+            continue
         ok = False
         for allow in allowlist:
             a = allow.replace("\\", "/")
