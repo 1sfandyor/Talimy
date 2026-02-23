@@ -128,6 +128,10 @@ def secret_fingerprint(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
 
 
+def client_log(channel: str, message: str) -> None:
+    print(f"[LAPTOP][{channel}] {message}")
+
+
 def http_json(
     method: str,
     url: str,
@@ -195,7 +199,7 @@ def trigger_server(task: str, commit: str, cfg: Config, session_context: dict[st
     if code != 200:
         raise RuntimeError(f"bridge trigger failed ({code}): {resp}")
     if resp.get("ack"):
-        print(f"[bridge-server] {resp['ack']}")
+        client_log("server-ack", f"[trigger] {resp['ack']}")
     return job_id
 
 
@@ -246,9 +250,9 @@ def send_bridge_event(
     if code == 200:
         ack = str(resp.get("ack", "")).strip()
         if ack:
-            print(f"[bridge-server] {ack}")
+            client_log("server-ack", f"[{event_type}] {ack}")
         return resp
-    print(f"[bridge-client] bridge event failed ({code}): {resp}")
+    client_log("bridge", f"event failed ({code}) [{event_type}]: {resp}")
     return None
 
 
@@ -951,12 +955,12 @@ def watch_bridge_events(
     prefix = f"[{label}] " if label else ""
     while time.time() - started < timeout_seconds:
         if stop_event is not None and stop_event.is_set():
-            print(f"\n[bridge-client] {prefix}watch-events stopped")
+            client_log("watch", f"{prefix.strip() or 'events'} stopped")
             return 0
         try:
             payload = get_bridge_events(job_id, cfg)
         except Exception as exc:
-            print(f"\n[bridge-client] {prefix}watch-events error: {exc}")
+            client_log("watch", f"{prefix.strip() or 'events'} error: {exc}")
             time.sleep(cfg.poll_interval_seconds)
             continue
 
@@ -978,14 +982,15 @@ def watch_bridge_events(
                     parts.append(f"conclusion={conclusion}")
                 if message:
                     parts.append(f"- {message}")
-                print("\n" + prefix + " | ".join(parts))
+                timeline_channel = f"timeline:{label}" if label else "timeline"
+                client_log(timeline_channel, " | ".join(parts))
             seen = len(events)
         else:
             dots = (dots + 1) % 4
-            print(f"\r[bridge-client] {prefix}watching events{'.' * dots}   ", end="", flush=True)
+            print(f"\r[LAPTOP][watch] {prefix}watching events{'.' * dots}   ", end="", flush=True)
         time.sleep(cfg.poll_interval_seconds)
 
-    print(f"\n[bridge-client] {prefix}watch-events timeout")
+    client_log("watch", f"{prefix.strip() or 'events'} timeout")
     return 0
 
 
@@ -1037,22 +1042,25 @@ def run_push_ci_server_flow(
     disable_session_context: bool = False,
 ) -> int:
     hello = bridge_hello(cfg)
-    print(f"[bridge-client] hello: {hello.get('message', 'ok')}")
+    hello_reply = str(hello.get("reply") or "").strip()
+    hello_src = str(hello.get("reply_source") or "").strip()
+    msg = hello.get("message", "ok")
+    if hello_reply:
+        client_log("hello", f"{msg} | server-codex={hello_reply} ({hello_src})")
+    else:
+        client_log("hello", str(msg))
     session_context = build_session_context_excerpt(
         cfg,
         session_id_override=session_id_override,
         disable_session_context=disable_session_context,
     )
     if session_context and session_context.get("excerpt"):
-        print(
-            "[bridge-client] session context loaded "
-            f"({session_context.get('message_count', 0)} messages)"
-        )
+        client_log("context", f"session context loaded ({session_context.get('message_count', 0)} messages)")
     commit = push_commit(cfg)
-    print(f"[bridge-client] pushed commit={commit[:12]}")
+    client_log("git", f"pushed commit={commit[:12]}")
 
     ci_job_id = f"ci-{uuid.uuid4().hex}"
-    print(f"[bridge-client] ci_job_id={ci_job_id}")
+    client_log("jobs", f"ci_job_id={ci_job_id}")
     send_bridge_event(
         cfg,
         job_id=ci_job_id,
@@ -1087,7 +1095,7 @@ def run_push_ci_server_flow(
             return summarize_result(ci_result)
 
     deploy_job_id = f"deploy-{uuid.uuid4().hex}"
-    print(f"[bridge-client] deploy_job_id={deploy_job_id}")
+    client_log("jobs", f"deploy_job_id={deploy_job_id}")
     dokploy_result = trigger_dokploy_deploy(task, commit, cfg, deploy_job_id)
     if dokploy_result is not None and dokploy_result.get("status") == "failure":
         write_last_result(dokploy_result)
@@ -1101,7 +1109,7 @@ def run_push_ci_server_flow(
         return summarize_result(runtime_result)
 
     job_id = trigger_server(task, commit, cfg, session_context=session_context)
-    print(f"[bridge-client] server_job_id={job_id}")
+    client_log("jobs", f"server_job_id={job_id}")
     send_bridge_event(
         cfg,
         job_id=job_id,
@@ -1113,7 +1121,7 @@ def run_push_ci_server_flow(
         status="completed",
         conclusion="success",
     )
-    print(f"[bridge-client] triggered server checks, job_id={job_id}")
+    client_log("bridge", f"triggered server checks, job_id={job_id}")
 
     srv_watch_stop: Event | None = None
     srv_watch_thread: Thread | None = None
@@ -1241,9 +1249,9 @@ def parse_common_push_flags(args: list[str]) -> dict[str, Any]:
 def main() -> int:
     cfg = load_config()
     cfg_path = resolve_config_path()
-    print(
-        f"[bridge-client] config={cfg_path} server={cfg.server_host}:{cfg.bridge_port} "
-        f"secret_fp={secret_fingerprint(cfg.shared_secret)}"
+    client_log(
+        "config",
+        f"path={cfg_path} server={cfg.server_host}:{cfg.bridge_port} secret_fp={secret_fingerprint(cfg.shared_secret)}",
     )
     if len(sys.argv) < 2:
         return usage()
@@ -1321,5 +1329,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print("\n[bridge-client] To'xtatildi.")
+        client_log("bridge", "To'xtatildi.")
         raise SystemExit(130)

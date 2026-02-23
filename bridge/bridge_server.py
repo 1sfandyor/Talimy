@@ -182,6 +182,10 @@ def secret_fingerprint(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
 
 
+def server_log(channel: str, message: str) -> None:
+    print(f"[SERVER][{channel}] {message}")
+
+
 def run_command(command: str, cwd: Path, timeout: int = 300) -> dict[str, Any]:
     started_at = time.time()
     completed = subprocess.run(
@@ -454,7 +458,7 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
             "session_context_meta": trigger.get("session_context", {}),
         },
     )
-    print(f"[bridge-server] job start job={job_id} task={task}")
+    server_log("bridge", f"job start job={job_id} task={task}")
 
     git_steps: list[dict[str, Any]] = []
 
@@ -481,9 +485,9 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         review_next = str(codex_review.get("next_action", "unknown"))
         review_errors = codex_review.get("errors", [])
         review_error_count = len(review_errors) if isinstance(review_errors, list) else 0
-        print(
-            f"[bridge-server] codex review job={job_id} status={review_status} "
-            f"next_action={review_next} errors={review_error_count}"
+        server_log(
+            "codex",
+            f"review job={job_id} status={review_status} next_action={review_next} errors={review_error_count}",
         )
 
     warnings: list[str] = []
@@ -515,8 +519,9 @@ def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
         "session_context_meta": trigger.get("session_context", {}),
     }
     state.jobs.write(job_id, result_payload)
-    print(
-        f"[bridge-server] job done job={job_id} status={result_payload['status']} next_action={result_payload['next_action']}"
+    server_log(
+        "bridge",
+        f"job done job={job_id} status={result_payload['status']} next_action={result_payload['next_action']}",
     )
 
 
@@ -527,7 +532,7 @@ def worker_loop(state: BridgeServerState) -> None:
             process_trigger(trigger, state)
         except Exception as exc:  # pragma: no cover - runtime safeguard
             job_id = str(trigger.get("job_id") or "unknown")
-            print(f"[bridge-server] job exception job={job_id} error={exc}")
+            server_log("bridge", f"job exception job={job_id} error={exc}")
             state.jobs.write(
                 job_id,
                 {
@@ -554,7 +559,7 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def _console(self, message: str) -> None:
-        print(f"[bridge-server] {message}")
+        server_log("bridge", message)
 
     def _json(self, code: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
@@ -752,15 +757,15 @@ def main() -> int:
     BoundHandler.state = state
     server = ThreadingHTTPServer(("0.0.0.0", config.bridge_port), BoundHandler)
 
-    print(f"[bridge-server] listening on 0.0.0.0:{config.bridge_port}")
-    print(f"[bridge-server] mode: {config.server_mode}")
-    print(f"[bridge-server] workdir: {config.server_workdir}")
-    print(f"[bridge-server] secret_fp={secret_fingerprint(config.shared_secret)}")
-    print("[bridge-server] checks: configured deterministic commands + optional codex review")
+    server_log("bridge", f"listening on 0.0.0.0:{config.bridge_port}")
+    server_log("bridge", f"mode={config.server_mode}")
+    server_log("bridge", f"workdir={config.server_workdir}")
+    server_log("bridge", f"secret_fp={secret_fingerprint(config.shared_secret)}")
+    server_log("bridge", "checks: configured deterministic commands + optional codex review")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n[bridge-server] shutting down")
+        server_log("bridge", "shutting down")
     finally:
         server.server_close()
     return 0
