@@ -82,14 +82,14 @@
     ],
     "api_runtime": [
       "docker service ps {{service:api}} --no-trunc",
-      "timeout 20s docker service logs --since 10m --tail=50 {{service:api}} 2>&1 || true",
+      "timeout 20s docker service logs --since 10m --tail=50 {{service:api}} || true",
       "curl -fsS https://api.talimy.space/api/health"
     ],
     "web_runtime": [
       "docker service ps {{service:web}} --no-trunc",
-      "timeout 20s docker service logs --since 10m --tail=50 {{service:web}} 2>&1 || true",
+      "timeout 20s docker service logs --since 10m --tail=50 {{service:web}} || true",
       "docker service ps {{service:platform}} --no-trunc",
-      "timeout 20s docker service logs --since 10m --tail=50 {{service:platform}} 2>&1 || true",
+      "timeout 20s docker service logs --since 10m --tail=50 {{service:platform}} || true",
       "curl -fsS https://talimy.space > /dev/null",
       "curl -fsS https://platform.talimy.space > /dev/null"
     ]
