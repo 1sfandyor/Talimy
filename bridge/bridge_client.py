@@ -688,6 +688,53 @@ def _run_command_set(
     event_job_id: str | None = None,
     event_commit: str | None = None,
 ) -> dict[str, Any] | None:
+    def _maybe_repair_failed_smoke_command(
+        *,
+        failed_command: str,
+        stderr_text: str,
+        stdout_text: str,
+    ) -> str | None:
+        if stage not in {"post_deploy_smoke", "local_smoke"}:
+            return None
+        dyn = cfg.dynamic_smoke
+        if not bool(dyn.get("enabled", False)):
+            return None
+        timeout = int(dyn.get("codex_timeout_seconds", cfg.auto_fix.get("codex_timeout_seconds", 900) or 900))
+        prompt = (
+            "You are repairing ONE failed Talimy bridge smoke command.\n"
+            "Return STRICT JSON only: {\"fixed_command\":\"...\",\"reason\":\"...\"}\n"
+            "Do not return markdown.\n"
+            "Keep command safe (no git push/pull/reset/checkout, no deploy commands).\n"
+            "Preserve placeholders if present: {{BASE_URL}}, {{TENANT_ID}}, {{ACCESS_TOKEN}}.\n"
+            f"Stage: {stage}\n"
+            f"Task: {task}\n"
+            f"Failed command:\n{failed_command}\n\n"
+            f"stderr excerpt:\n{stderr_text[:1200]}\n\n"
+            f"stdout excerpt:\n{stdout_text[:1200]}\n"
+        )
+        client_log("bridge", f"[{stage}] smoke cmd repair start")
+        try:
+            fix_res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+        except FileNotFoundError:
+            return None
+        if fix_res.returncode != 0:
+            return None
+        parsed_fix = parse_json_object_from_text(fix_res.stdout or "")
+        if not parsed_fix:
+            return None
+        fixed_command = str(parsed_fix.get("fixed_command", "")).strip()
+        if not fixed_command:
+            return None
+        bad = _dynamic_smoke_forbidden(fixed_command)
+        if bad:
+            client_log("bridge", f"[{stage}] smoke cmd repair rejected forbidden token={bad}")
+            return None
+        if stage == "post_deploy_smoke" and "curl " in fixed_command.lower() and "{{BASE_URL}}" not in fixed_command and "https://api.talimy.space" not in fixed_command.lower():
+            client_log("bridge", f"[{stage}] smoke cmd repair rejected missing BASE_URL route context")
+            return None
+        client_log("bridge", f"[{stage}] smoke cmd repair applied")
+        return fixed_command
+
     smoke_key, commands = _select_task_command_set(task, checks=checks, mapping=mapping)
     dynamic_meta: dict[str, Any] | None = None
     if not commands:
@@ -768,9 +815,58 @@ def _run_command_set(
                 message=f"Smoke cmd done rc={res.returncode} dur={duration}s: {rendered[:140]}",
             )
         if res.returncode != 0:
-            errors.append(f"{stage} failed: {rendered}")
             stderr_text = (res.stderr or "").strip()
             stdout_text = (res.stdout or "").strip()
+            repaired_command = _maybe_repair_failed_smoke_command(
+                failed_command=rendered,
+                stderr_text=stderr_text,
+                stdout_text=stdout_text,
+            )
+            if repaired_command and repaired_command != rendered:
+                if stage == "post_deploy_smoke" and event_job_id:
+                    send_bridge_event(
+                        cfg,
+                        job_id=event_job_id,
+                        event_type="feature_smoke_status",
+                        task=task,
+                        commit=event_commit or "",
+                        workflow=str(smoke_key or "feature-smoke"),
+                        status="in_progress",
+                        message="Smoke cmd repaired by laptop Codex, retrying single command.",
+                    )
+                client_log("bridge", f"[{stage}] retry repaired cmd={repaired_command}")
+                started2 = time.time()
+                res2 = run_shell_or_direct(repaired_command, repo)
+                duration2 = round(time.time() - started2, 2)
+                check_results.append(
+                    {
+                        "command": repaired_command,
+                        "returncode": res2.returncode,
+                        "stdout": res2.stdout,
+                        "stderr": res2.stderr,
+                        "duration_seconds": duration2,
+                        "repair_retry": True,
+                    }
+                )
+                client_log("bridge", f"[{stage}] repaired cmd done rc={res2.returncode} dur={duration2}s")
+                if stage == "post_deploy_smoke" and event_job_id:
+                    send_bridge_event(
+                        cfg,
+                        job_id=event_job_id,
+                        event_type="feature_smoke_status",
+                        task=task,
+                        commit=event_commit or "",
+                        workflow=str(smoke_key or "feature-smoke"),
+                        status="completed",
+                        conclusion="success" if res2.returncode == 0 else "failure",
+                        message=f"Smoke repaired cmd done rc={res2.returncode} dur={duration2}s",
+                    )
+                if res2.returncode == 0:
+                    continue
+                stderr_text = (res2.stderr or "").strip()
+                stdout_text = (res2.stdout or "").strip()
+                rendered = repaired_command
+            errors.append(f"{stage} failed: {rendered}")
             detail = (stderr_text or stdout_text).strip()
             if detail:
                 errors.append(detail[:1200])
