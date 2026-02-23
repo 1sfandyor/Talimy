@@ -98,6 +98,22 @@ class EventStore:
             with path.open("a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
 
+    def read(self, job_id: str) -> list[dict[str, Any]]:
+        path = self.events_dir / f"{job_id}.jsonl"
+        if not path.exists():
+            return []
+        items: list[dict[str, Any]] = []
+        with self._lock:
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    items.append(json.loads(raw))
+                except json.JSONDecodeError:
+                    items.append({"event_type": "parse_error", "raw": raw})
+        return items
+
 
 class BridgeServerState:
     def __init__(self, config: BridgeConfig) -> None:
@@ -403,6 +419,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"status": "pending", "job_id": job_id})
                 return
             self._json(200, payload)
+            return
+
+        if parsed.path == "/events":
+            params = parse_qs(parsed.query)
+            job_id = (params.get("job_id") or [""])[0]
+            if not job_id:
+                self._json(400, {"status": "error", "message": "job_id is required"})
+                return
+            self._json(200, {"status": "ok", "job_id": job_id, "events": self.state.events.read(job_id)})
             return
 
         self._json(404, {"status": "not_found"})

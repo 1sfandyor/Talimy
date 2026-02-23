@@ -68,6 +68,12 @@ Keyingi task nomi bilan push + trigger:
 python bridge/bridge_client.py bridge-push-next
 ```
 
+CI/bridge event tarixini ko'rish (`job_id` bo'yicha):
+
+```bash
+python bridge/bridge_client.py events <job_id>
+```
+
 ## 4) Natija formati
 
 Server `/result?job_id=...` endpoint JSON qaytaradi:
@@ -80,6 +86,11 @@ Server `/result?job_id=...` endpoint JSON qaytaradi:
 - `next_action`
 - `checks[]` (buyruqlar stdout/stderr bilan)
 - `codex_review` (yoqilgan bo'lsa)
+
+Server `/events?job_id=...` endpoint event timeline qaytaradi:
+
+- `hello`
+- `ci_status` (`queued/in_progress/completed`, `success/failure`)
 
 `push` / `bridge-push-next` oqimi:
 

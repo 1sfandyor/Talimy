@@ -393,6 +393,20 @@ def wait_for_result(job_id: str, cfg: Config, timeout_seconds: int = 900) -> dic
     return None
 
 
+def get_bridge_events(job_id: str, cfg: Config) -> dict[str, Any]:
+    server = f"http://{cfg.server_host}:{cfg.bridge_port}"
+    code, resp = http_json(
+        "GET",
+        f"{server}/events?job_id={parse.quote(job_id)}",
+        None,
+        cfg.request_timeout_seconds,
+        cfg.shared_secret,
+    )
+    if code != 200:
+        raise RuntimeError(f"bridge events failed ({code}): {resp}")
+    return resp
+
+
 def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
     tg = cfg.telegram
     if not bool(tg.get("enabled", False)):
@@ -540,6 +554,7 @@ def usage() -> int:
     print("  python bridge/bridge_client.py hello")
     print("  python bridge/bridge_client.py push \"task description\"")
     print("  python bridge/bridge_client.py wait <job_id>")
+    print("  python bridge/bridge_client.py events <job_id>")
     print("  python bridge/bridge_client.py next-task")
     print("  python bridge/bridge_client.py bridge-push-next")
     return 1
@@ -580,6 +595,14 @@ def main() -> int:
         if result is None:
             return 1
         print(json.dumps(result, indent=2))
+        return 0
+
+    if cmd == "events":
+        if len(sys.argv) < 3:
+            print("job_id required")
+            return 1
+        events = get_bridge_events(sys.argv[2], cfg)
+        print(json.dumps(events, indent=2))
         return 0
 
     if cmd == "bridge-push-next":
