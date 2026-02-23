@@ -68,6 +68,20 @@ set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
 python bridge/bridge_client.py push "2.12 Exams Module smoke test" --watch
 ```
 
+Bir martalik session override:
+
+```bash
+set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
+python bridge/bridge_client.py push "2.12 Exams Module smoke test" --watch --session-id 019c86a6-24f6-76f1-b071-373c3d75b356
+```
+
+Session contextni vaqtincha o'chirish:
+
+```bash
+set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
+python bridge/bridge_client.py push "2.12 Exams Module smoke test" --no-session-context
+```
+
 Reja tracker bo'yicha keyingi taskni ko'rish:
 
 ```bash
@@ -86,6 +100,8 @@ Realtime tail bilan:
 set BRIDGE_CONFIG_PATH=bridge\bridge_config.laptop.json
 python bridge/bridge_client.py bridge-push-next --watch
 ```
+
+`bridge-push-next` ham `--session-id <id>` va `--no-session-context` flaglarini qo'llab-quvvatlaydi.
 
 CI/bridge event tarixini ko'rish (`job_id` bo'yicha):
 

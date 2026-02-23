@@ -551,8 +551,19 @@ def resolve_session_jsonl_path(sc: dict[str, Any]) -> Path | None:
     return matches[0] if matches else sessions_root / f"*{session_id}*.jsonl"
 
 
-def build_session_context_excerpt(cfg: Config) -> dict[str, Any] | None:
-    sc = cfg.session_context
+def build_session_context_excerpt(
+    cfg: Config,
+    *,
+    session_id_override: str | None = None,
+    disable_session_context: bool = False,
+) -> dict[str, Any] | None:
+    sc = dict(cfg.session_context)
+    if disable_session_context:
+        return None
+    if session_id_override:
+        sc["enabled"] = True
+        sc.pop("path", None)
+        sc["session_id"] = session_id_override
     if not bool(sc.get("enabled", False)):
         return None
 
@@ -915,10 +926,21 @@ def send_telegram_notification(result: dict[str, Any], cfg: Config) -> None:
         return
 
 
-def run_push_ci_server_flow(task: str, cfg: Config, *, watch: bool = False) -> int:
+def run_push_ci_server_flow(
+    task: str,
+    cfg: Config,
+    *,
+    watch: bool = False,
+    session_id_override: str | None = None,
+    disable_session_context: bool = False,
+) -> int:
     hello = bridge_hello(cfg)
     print(f"[bridge-client] hello: {hello.get('message', 'ok')}")
-    session_context = build_session_context_excerpt(cfg)
+    session_context = build_session_context_excerpt(
+        cfg,
+        session_id_override=session_id_override,
+        disable_session_context=disable_session_context,
+    )
     if session_context and session_context.get("excerpt"):
         print(
             "[bridge-client] session context loaded "
@@ -1076,13 +1098,42 @@ def next_reja_task(tasks_file: Path) -> tuple[str, str] | None:
 def usage() -> int:
     print("Usage:")
     print("  python bridge/bridge_client.py hello")
-    print("  python bridge/bridge_client.py push \"task description\" [--watch]")
+    print("  python bridge/bridge_client.py push \"task description\" [--watch] [--session-id <id>] [--no-session-context]")
     print("  python bridge/bridge_client.py wait <job_id>")
     print("  python bridge/bridge_client.py events <job_id>")
     print("  python bridge/bridge_client.py watch-events <job_id>")
     print("  python bridge/bridge_client.py next-task")
-    print("  python bridge/bridge_client.py bridge-push-next [--watch]")
+    print("  python bridge/bridge_client.py bridge-push-next [--watch] [--session-id <id>] [--no-session-context]")
     return 1
+
+
+def parse_common_push_flags(args: list[str]) -> dict[str, Any]:
+    watch = False
+    no_session_context = False
+    session_id: str | None = None
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token == "--watch":
+            watch = True
+            i += 1
+            continue
+        if token == "--no-session-context":
+            no_session_context = True
+            i += 1
+            continue
+        if token == "--session-id":
+            if i + 1 >= len(args):
+                raise ValueError("--session-id value required")
+            session_id = args[i + 1].strip()
+            i += 2
+            continue
+        raise ValueError(f"Unknown flag: {token}")
+    return {
+        "watch": watch,
+        "session_id_override": session_id,
+        "disable_session_context": no_session_context,
+    }
 
 
 def main() -> int:
@@ -1110,8 +1161,12 @@ def main() -> int:
             print("Task description required")
             return 1
         task = sys.argv[2]
-        watch = "--watch" in sys.argv[3:]
-        return run_push_ci_server_flow(task, cfg, watch=watch)
+        try:
+            flags = parse_common_push_flags(sys.argv[3:])
+        except ValueError as exc:
+            print(str(exc))
+            return 1
+        return run_push_ci_server_flow(task, cfg, **flags)
 
     if cmd == "wait":
         if len(sys.argv) < 3:
@@ -1145,8 +1200,12 @@ def main() -> int:
         task_no, title = nxt
         task = f"{task_no} {title}"
         print(f"[bridge-client] next task selected: {task}")
-        watch = "--watch" in sys.argv[2:]
-        return run_push_ci_server_flow(task, cfg, watch=watch)
+        try:
+            flags = parse_common_push_flags(sys.argv[2:])
+        except ValueError as exc:
+            print(str(exc))
+            return 1
+        return run_push_ci_server_flow(task, cfg, **flags)
 
     return usage()
 
