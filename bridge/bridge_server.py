@@ -349,6 +349,41 @@ Qilish kerak:
     return parsed
 
 
+def run_server_codex_hello(config: BridgeConfig, workdir: Path, *, side: str) -> tuple[str, str]:
+    codex_cfg = config.server_codex
+    if not codex_cfg.get("enabled", False):
+        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+
+    codex_bin = str(codex_cfg.get("binary", "codex"))
+    timeout = int(codex_cfg.get("hello_timeout_seconds", 20))
+    prompt = (
+        "Laptopdagi Codex bridge salomlashuv yubordi. "
+        f"Tomon: {side}. "
+        "Qisqa 1 jumla javob yozing (o'zbekcha), mazmuni: eshitib turibman va kutaman. "
+        "Faqat javob matnini yozing."
+    )
+    try:
+        result = subprocess.run(
+            [codex_bin, "--no-interactive", "-q", prompt],
+            cwd=str(workdir),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except Exception:
+        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+
+    reply = (result.stdout or "").strip()
+    if result.returncode != 0 or not reply:
+        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+
+    # Keep hello deterministic and one-line even if codex returns multi-line text.
+    first_line = next((line.strip() for line in reply.splitlines() if line.strip()), "")
+    if not first_line:
+        return "Yaxshi, kutib turaman.", "bridge_server_fallback"
+    return first_line, "server_codex"
+
+
 def process_trigger(trigger: dict[str, Any], state: BridgeServerState) -> None:
     config = state.config
     workdir = config.server_workdir
@@ -500,12 +535,15 @@ class Handler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             side = (params.get("side") or ["unknown"])[0]
             self._console(f"hello from {side}")
+            reply, reply_source = run_server_codex_hello(self.state.config, self.state.config.server_workdir, side=side)
+            self._console(f"hello reply source={reply_source} reply={reply}")
             self._json(
                 200,
                 {
                     "status": "ok",
                     "message": f"bridge-server eshitayapti ({side})",
-                    "reply": "Yaxshi, kutib turaman.",
+                    "reply": reply,
+                    "reply_source": reply_source,
                     "server_time": int(time.time()),
                 },
             )
