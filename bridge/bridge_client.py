@@ -211,6 +211,66 @@ def current_commit(cwd: Path) -> str:
     return res.stdout.strip()
 
 
+def changed_files_for_commit(cwd: Path, commit: str) -> list[str]:
+    res = run_git(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", commit], cwd)
+    if res.returncode != 0:
+        return []
+    return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+
+
+def predict_ci_trigger_for_commit(cfg: Config, commit: str) -> dict[str, Any]:
+    repo = cfg.laptop_repo_path
+    files = changed_files_for_commit(repo, commit)
+    if not files:
+        return {"known": False, "expect_runs": True, "reason": "changed files aniqlanmadi", "files": []}
+
+    normalized = [f.replace("\\", "/") for f in files]
+
+    docs_only_prefixes = ("bridge/", "docReja/")
+    docs_only_suffixes = (".md", ".txt")
+
+    all_docs_like = all(
+        p.startswith(docs_only_prefixes)
+        or p.endswith(docs_only_suffixes)
+        or p.startswith(".vscode/")
+        or p.startswith(".idea/")
+        for p in normalized
+    )
+    if all_docs_like:
+        return {
+            "known": True,
+            "expect_runs": False,
+            "reason": "docs/bridge-only commit (CI path filter trigger bo'lmasligi mumkin)",
+            "files": normalized,
+        }
+
+    workflow_files = [p for p in normalized if p.startswith(".github/workflows/")]
+    if workflow_files:
+        return {
+            "known": True,
+            "expect_runs": True,
+            "reason": "workflow files o'zgargan",
+            "files": normalized,
+        }
+
+    # Conservative default: application/package code changes may trigger CI/CD.
+    code_prefixes = ("apps/", "packages/", "tooling/")
+    if any(p.startswith(code_prefixes) for p in normalized):
+        return {
+            "known": True,
+            "expect_runs": True,
+            "reason": "app/package/tooling code changes topildi",
+            "files": normalized,
+        }
+
+    return {
+        "known": False,
+        "expect_runs": True,
+        "reason": "commit pathlari bo'yicha CI trigger holati noaniq",
+        "files": normalized,
+    }
+
+
 def push_commit(cfg: Config) -> str:
     repo = cfg.laptop_repo_path
     push = run_git(["git", "push", "origin", cfg.branch], repo)
@@ -718,6 +778,40 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
     no_run_grace_seconds = int(ci_cfg.get("no_run_grace_seconds", 45))
     require_runs = bool(ci_cfg.get("require_runs", False))
     watch_workflows = {str(x).strip() for x in ci_cfg.get("workflows", []) if str(x).strip()}
+    prediction = predict_ci_trigger_for_commit(cfg, commit)
+    if prediction.get("known") and not prediction.get("expect_runs"):
+        msg = (
+            "Commit pathlari bo'yicha GitHub CI trigger kutilmaydi "
+            f"({prediction.get('reason', 'path prediction')}); CI skip qilinmoqda"
+        )
+        send_bridge_event(
+            cfg,
+            job_id=job_id,
+            event_type="ci_status",
+            task=task,
+            commit=commit,
+            message=msg,
+            workflow="github-ci",
+            status="completed",
+            conclusion="skipped",
+        )
+        return {
+            "status": "success",
+            "tests_passed": True,
+            "errors": [],
+            "warnings": [msg],
+            "suggestions": [],
+            "next_action": "proceed",
+            "task": task,
+            "commit": commit,
+            "stage": "github_ci",
+            "github_ci": {
+                "repo": repo_slug,
+                "runs": [],
+                "skipped_no_runs": True,
+                "path_prediction": prediction,
+            },
+        }
 
     try:
         gh_check = run_cmd(["gh", "--version"], repo)
@@ -905,7 +999,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
                         "task": task,
                         "commit": commit,
                         "stage": "github_ci",
-                        "github_ci": {"repo": repo_slug, "runs": []},
+                        "github_ci": {"repo": repo_slug, "runs": [], "path_prediction": prediction},
                     }
                 return {
                     "status": "success",
@@ -917,7 +1011,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
                     "task": task,
                     "commit": commit,
                     "stage": "github_ci",
-                    "github_ci": {"repo": repo_slug, "runs": [], "skipped_no_runs": True},
+                    "github_ci": {"repo": repo_slug, "runs": [], "skipped_no_runs": True, "path_prediction": prediction},
                 }
 
         dots = (dots + 1) % 4
@@ -934,7 +1028,7 @@ def wait_for_github_ci(commit: str, task: str, cfg: Config, job_id: str) -> dict
         "task": task,
         "commit": commit,
         "stage": "github_ci",
-        "github_ci": {"repo": repo_slug, "runs": last_runs},
+        "github_ci": {"repo": repo_slug, "runs": last_runs, "path_prediction": prediction},
     }
 
 
