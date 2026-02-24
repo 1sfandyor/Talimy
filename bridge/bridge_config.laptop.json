@@ -5,6 +5,12 @@
   "branch": "main",
   "server_mode": "runtime_inspector",
   "server_workdir": "",
+  "config_meta": {
+    "config_path_env": "${BRIDGE_CONFIG_PATH}",
+    "repo_path_wsl": "${BRIDGE_REPO_PATH_WSL}",
+    "repo_path_windows": "${BRIDGE_REPO_PATH_WINDOWS}",
+    "notes": "Optional helper env placeholders for documentation/ops. bridge_client currently reads BRIDGE_CONFIG_PATH directly; repo path uses laptop_repo_path and is WSL-normalized automatically."
+  },
   "laptop_repo_path": "C:/Users/isfan/Desktop/talimy",
   "tasks_file": "docReja/Reja.md",
   "poll_interval_seconds": 5,
@@ -95,6 +101,7 @@
     "base_url": "https://api.talimy.space",
     "register_path": "/api/auth/register",
     "tenant_id": "${BRIDGE_SMOKE_TENANT_ID}",
+    "tenant_id_fallback": "${BRIDGE_TENANT_ID}",
     "email_prefix": "bridge-smoke",
     "full_name": "Bridge Smoke Admin",
     "password": "Password123"
