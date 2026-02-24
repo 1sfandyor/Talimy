@@ -335,6 +335,8 @@ def http_json(
         except Exception:
             parsed = {"status": "http_error", "body": body}
         return exc.code, parsed
+    except error.URLError as exc:
+        return 599, {"status": "url_error", "error": str(exc)}
 
 
 def run_git(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -2053,6 +2055,18 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
     errors = [str(x) for x in failure_result.get("errors", [])]
     warnings = [str(x) for x in failure_result.get("warnings", [])][:5]
     suggestions = [str(x) for x in failure_result.get("suggestions", [])][:5]
+
+    # Skip code auto-fix for local environment/tooling bootstrap failures.
+    joined_errors_l = "\n".join(errors).lower()
+    if stage == "local_smoke" and (
+        "turbo: command not found" in joined_errors_l
+        or "script \"lint\" exited with code 127" in joined_errors_l
+        or "script \"typecheck\" exited with code 127" in joined_errors_l
+        or "command not found" in joined_errors_l
+    ):
+        client_log("bridge", "auto-fix skipped: local tooling/deps missing (WSL env bootstrap needed)")
+        client_log("bridge", "hint: repo root'da `bun install` ishlating, so'ng pipeline'ni qayta ishga tushiring")
+        return False
     target_hints = _auto_fix_target_hints(task, stage, failure_result)
     reja_subtasks = _parse_reja_task_subtasks(task, cfg)
     target_block = ""
@@ -3515,7 +3529,26 @@ def run_push_ci_server_flow(
         return summarize_result(smoke_result)
 
     client_log("stage", "bridge_hello")
-    hello = bridge_hello(cfg)
+    try:
+        hello = bridge_hello(cfg)
+    except Exception as exc:
+        result = {
+            "status": "failure",
+            "tests_passed": False,
+            "errors": [f"Bridge hello failed: {exc}"],
+            "warnings": [],
+            "suggestions": [
+                f"Bridge server ishlayotganini tekshiring: http://{cfg.server_host}:{cfg.bridge_port}",
+                "WSL ishlatayotgan bo'lsangiz server IP/port WSL'dan reachable ekanini tekshiring.",
+            ],
+            "next_action": "fix_required",
+            "task": task,
+            "commit": "",
+            "stage": "bridge_hello",
+        }
+        write_last_result(result)
+        send_telegram_notification(result, cfg)
+        return summarize_result(result)
     hello_reply = str(hello.get("reply") or "").strip()
     hello_src = str(hello.get("reply_source") or "").strip()
     msg = hello.get("message", "ok")
