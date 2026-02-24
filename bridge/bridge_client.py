@@ -1760,7 +1760,81 @@ def git_commit_if_needed(cfg: Config, message: str) -> bool:
     return True
 
 
-def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+def _run_local_codex_args(
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: int,
+    stream_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    if not stream_output:
+        return subprocess.run(
+            args,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    proc = subprocess.Popen(
+        args,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def _reader(pipe: Any, chunks: list[str]) -> None:
+        if pipe is None:
+            return
+        try:
+            for line in iter(pipe.readline, ""):
+                chunks.append(line)
+                # Real-time raw Codex output (no [codex], no stdout/stderr labels).
+                print(_redact_sensitive_text(line.rstrip("\n")))
+        finally:
+            try:
+                pipe.close()
+            except Exception:
+                pass
+
+    t_out = Thread(target=_reader, args=(proc.stdout, stdout_chunks), daemon=True)
+    t_err = Thread(target=_reader, args=(proc.stderr, stderr_chunks), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    try:
+        rc = proc.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        rc = proc.wait()
+        t_out.join(timeout=1)
+        t_err.join(timeout=1)
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=rc if rc is not None else 124,
+            stdout="".join(stdout_chunks),
+            stderr=("".join(stderr_chunks) + ("\n" if stderr_chunks else "") + f"Command timed out after {timeout_seconds}s"),
+        )
+
+    t_out.join(timeout=1)
+    t_err.join(timeout=1)
+    return subprocess.CompletedProcess(args=args, returncode=rc, stdout="".join(stdout_chunks), stderr="".join(stderr_chunks))
+
+
+def run_local_codex_prompt(
+    prompt: str,
+    cfg: Config,
+    *,
+    timeout_seconds: int,
+    stream_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
     repo = cfg.laptop_repo_path
     variants = [
         ["codex", "-s", "danger-full-access", "-a", "never", "exec", "--color", "never", prompt],
@@ -1775,14 +1849,11 @@ def run_local_codex_prompt(prompt: str, cfg: Config, *, timeout_seconds: int) ->
     last: subprocess.CompletedProcess[str] | None = None
     for args in variants:
         try:
-            res = subprocess.run(
+            res = _run_local_codex_args(
                 args,
-                cwd=str(repo),
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                encoding="utf-8",
-                errors="replace",
+                cwd=repo,
+                timeout_seconds=timeout_seconds,
+                stream_output=stream_output,
             )
         except FileNotFoundError:
             raise
@@ -2024,7 +2095,7 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
         client_log("bridge", f"auto-fix blocked: unrelated dirty files present [{preview}]")
         return False
     try:
-        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout, stream_output=True)
     except FileNotFoundError:
         client_log("bridge", "auto-fix skipped: local codex CLI topilmadi")
         return False
