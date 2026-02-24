@@ -6,9 +6,9 @@
   "server_mode": "runtime_inspector",
   "server_workdir": "",
   "config_meta": {
-    "config_path_env": "${BRIDGE_CONFIG_PATH}",
-    "repo_path_wsl": "${BRIDGE_REPO_PATH_WSL}",
-    "repo_path_windows": "${BRIDGE_REPO_PATH_WINDOWS}",
+    "config_path_env": "C:/Users/isfan/Desktop/talimy/bridge/bridge_config.laptop.json",
+    "repo_path_wsl": "/mnt/c/Users/isfan/Desktop/talimy",
+    "repo_path_windows": "C:/Users/isfan/Desktop/talimy",
     "notes": "Optional helper env placeholders for documentation/ops. bridge_client currently reads BRIDGE_CONFIG_PATH directly; repo path uses laptop_repo_path and is WSL-normalized automatically."
   },
   "laptop_repo_path": "C:/Users/isfan/Desktop/talimy",
@@ -25,17 +25,17 @@
     "require_runs": false
   },
   "telegram": {
-    "enabled": "${TELEGRAM_ENABLED}",
-    "bot_token": "${TELEGRAM_BOT_TOKEN}",
-    "chat_id": "${TELEGRAM_CHAT_ID}"
+    "enabled": true,
+    "bot_token": "8750824317:AAH463QkpPpPuHJ-xEQ_uKK65zhj-b1iIDE",
+    "chat_id": "352986914"
   },
   "dokploy": {
-    "enabled": "${DOKPLOY_ENABLED}",
+    "enabled": true,
     "deploy_hook_url": "${DOKPLOY_DEPLOY_HOOK_URL}",
     "hooks": {
-      "api": "${DOKPLOY_API_HOOK_URL}",
-      "web": "${DOKPLOY_WEB_HOOK_URL}",
-      "platform": "${DOKPLOY_PLATFORM_HOOK_URL}",
+      "api": "http://185.157.46.149:3000/api/deploy/nRjs7EqFq5QxtouZQvlKr",
+      "web": "http://185.157.46.149:3000/api/deploy/lvzx0Et1S3W8sp8RJL5kV",
+      "platform": "http://185.157.46.149:3000/api/deploy/wfMHtKBwmJLhvDpNxjWOF",
       "default": "${DOKPLOY_DEPLOY_HOOK_URL}"
     },
     "task_deploy_mapping": {
@@ -100,7 +100,7 @@
   "smoke_auth": {
     "base_url": "https://api.talimy.space",
     "register_path": "/api/auth/register",
-    "tenant_id": "${BRIDGE_SMOKE_TENANT_ID}",
+    "tenant_id": "eddbf523-f288-402a-9a16-ef93d27aafc7",
     "tenant_id_fallback": "${BRIDGE_TENANT_ID}",
     "email_prefix": "bridge-smoke",
     "full_name": "Bridge Smoke Admin",
