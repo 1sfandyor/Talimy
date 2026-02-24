@@ -1,4 +1,12 @@
-import { IsArray, IsNumber, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from "class-validator"
+import {
+  IsArray,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ValidateNested,
+} from "class-validator"
 import { Type } from "class-transformer"
 
 class ExamResultRecordDto {

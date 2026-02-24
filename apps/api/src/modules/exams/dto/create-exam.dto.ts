@@ -1,5 +1,14 @@
 import { Type } from "class-transformer"
-import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from "class-validator"
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+} from "class-validator"
 
 const EXAM_TYPES = ["midterm", "final", "quiz", "custom"] as const
 

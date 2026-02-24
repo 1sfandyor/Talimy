@@ -1,6 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 import { classes, db, examResults, exams, students, subjects, users } from "@talimy/database"
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm"
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm"
 
 import { CreateExamDto, UpdateExamDto } from "./dto/create-exam.dto"
 import { EnterExamResultsDto } from "./dto/exam-result.dto"
@@ -54,7 +68,11 @@ export class ExamsRepository {
         .select({ examId: examResults.examId, total: count(examResults.id) })
         .from(examResults)
         .where(
-          and(inArray(examResults.examId, examIds), eq(examResults.tenantId, query.tenantId), isNull(examResults.deletedAt))
+          and(
+            inArray(examResults.examId, examIds),
+            eq(examResults.tenantId, query.tenantId),
+            isNull(examResults.deletedAt)
+          )
         )
         .groupBy(examResults.examId)
       for (const row of resultCounts) resultsCountByExam.set(row.examId, Number(row.total))
@@ -101,7 +119,13 @@ export class ExamsRepository {
     const [resultCount] = await db
       .select({ total: sql<number>`count(*)::int` })
       .from(examResults)
-      .where(and(eq(examResults.examId, id), eq(examResults.tenantId, tenantId), isNull(examResults.deletedAt)))
+      .where(
+        and(
+          eq(examResults.examId, id),
+          eq(examResults.tenantId, tenantId),
+          isNull(examResults.deletedAt)
+        )
+      )
 
     return this.mapExamRow(row, resultCount?.total ?? 0)
   }
@@ -253,10 +277,14 @@ export class ExamsRepository {
     const scores = rows.map((row) => row.score)
     const totals = {
       resultsCount: rows.length,
-      averageScore: rows.length ? this.round(scores.reduce((sum, value) => sum + value, 0) / rows.length) : null,
+      averageScore: rows.length
+        ? this.round(scores.reduce((sum, value) => sum + value, 0) / rows.length)
+        : null,
       highestScore: rows.length ? Math.max(...scores) : null,
       lowestScore: rows.length ? Math.min(...scores) : null,
-      averagePercentage: rows.length ? this.round(rows.reduce((sum, row) => sum + row.percentage, 0) / rows.length) : null,
+      averagePercentage: rows.length
+        ? this.round(rows.reduce((sum, row) => sum + row.percentage, 0) / rows.length)
+        : null,
     }
 
     return {
@@ -400,7 +428,13 @@ export class ExamsRepository {
     if (query.search) {
       const search = query.search.trim()
       if (search.length > 0) {
-        filters.push(or(ilike(exams.name, `%${search}%`), ilike(subjects.name, `%${search}%`), ilike(classes.name, `%${search}%`))!)
+        filters.push(
+          or(
+            ilike(exams.name, `%${search}%`),
+            ilike(subjects.name, `%${search}%`),
+            ilike(classes.name, `%${search}%`)
+          )!
+        )
       }
     }
 
@@ -500,7 +534,9 @@ export class ExamsRepository {
     const [row] = await db
       .select({ id: classes.id })
       .from(classes)
-      .where(and(eq(classes.id, classId), eq(classes.tenantId, tenantId), isNull(classes.deletedAt)))
+      .where(
+        and(eq(classes.id, classId), eq(classes.tenantId, tenantId), isNull(classes.deletedAt))
+      )
       .limit(1)
     if (!row) throw new NotFoundException("Class not found in tenant")
   }
@@ -509,7 +545,9 @@ export class ExamsRepository {
     const [row] = await db
       .select({ id: subjects.id })
       .from(subjects)
-      .where(and(eq(subjects.id, subjectId), eq(subjects.tenantId, tenantId), isNull(subjects.deletedAt)))
+      .where(
+        and(eq(subjects.id, subjectId), eq(subjects.tenantId, tenantId), isNull(subjects.deletedAt))
+      )
       .limit(1)
     if (!row) throw new NotFoundException("Subject not found in tenant")
   }
@@ -518,12 +556,18 @@ export class ExamsRepository {
     const [row] = await db
       .select({ id: students.id })
       .from(students)
-      .where(and(eq(students.id, studentId), eq(students.tenantId, tenantId), isNull(students.deletedAt)))
+      .where(
+        and(eq(students.id, studentId), eq(students.tenantId, tenantId), isNull(students.deletedAt))
+      )
       .limit(1)
     if (!row) throw new NotFoundException("Student not found in tenant")
   }
 
-  private async assertStudentsInExamClass(tenantId: string, classId: string, studentIds: string[]): Promise<void> {
+  private async assertStudentsInExamClass(
+    tenantId: string,
+    classId: string,
+    studentIds: string[]
+  ): Promise<void> {
     const rows = await db
       .select({ id: students.id })
       .from(students)

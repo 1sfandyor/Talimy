@@ -19,7 +19,10 @@ export const examQuerySchema = z
     dateTo: z.string().optional(),
   })
   .refine(
-    (data) => !data.dateFrom || !data.dateTo || new Date(data.dateFrom).getTime() <= new Date(data.dateTo).getTime(),
+    (data) =>
+      !data.dateFrom ||
+      !data.dateTo ||
+      new Date(data.dateFrom).getTime() <= new Date(data.dateTo).getTime(),
     {
       message: "dateFrom cannot be after dateTo",
       path: ["dateFrom"],

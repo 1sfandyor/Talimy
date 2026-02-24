@@ -51,7 +51,10 @@ export class ExamsController {
   }
 
   @Get(":id/results")
-  getResultsByExam(@Param("id") id: string, @Query(new ZodValidationPipe(examQuerySchema)) query: ExamQueryDto) {
+  getResultsByExam(
+    @Param("id") id: string,
+    @Query(new ZodValidationPipe(examQuerySchema)) query: ExamQueryDto
+  ) {
     return this.examsService.getResultsByExam(query.tenantId, id, query)
   }
 

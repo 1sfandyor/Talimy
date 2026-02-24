@@ -48,7 +48,9 @@ export class AssignmentsController {
 
   @Get("stats")
   @Roles("platform_admin", "school_admin", "teacher")
-  getOverviewStats(@Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }) {
+  getOverviewStats(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+  ) {
     return this.assignmentsService.getOverviewStats(query.tenantId)
   }
 
@@ -110,7 +112,8 @@ export class AssignmentsController {
           file.mimetype.startsWith("image/") ||
           file.mimetype === "application/pdf" ||
           file.mimetype === "application/msword" ||
-          file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          file.mimetype ===
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
         if (!isAllowedMime) {
           callback(new BadRequestException("Unsupported assignment file type"), false)
@@ -144,7 +147,8 @@ export class AssignmentsController {
     @Param("id") id: string,
     @Param("submissionId") submissionId: string,
     @Query("tenantId") tenantId: string,
-    @Body(new ZodValidationPipe(gradeAssignmentSubmissionSchema)) payload: GradeAssignmentSubmissionDto
+    @Body(new ZodValidationPipe(gradeAssignmentSubmissionSchema))
+    payload: GradeAssignmentSubmissionDto
   ) {
     return this.assignmentsService.gradeSubmission(tenantId, id, submissionId, payload)
   }
