@@ -1591,7 +1591,7 @@ def _run_task_implementation_verifier(task: str, cfg: Config) -> dict[str, Any] 
     )
     client_log("task", "implementation_verifier (codex) start")
     try:
-        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout)
+        res = run_local_codex_prompt(prompt, cfg, timeout_seconds=timeout, stream_output=True)
     except FileNotFoundError:
         client_log("task", "implementation_verifier fallback (local codex CLI topilmadi)")
         return _check_task_implementation_presence(task, cfg)
