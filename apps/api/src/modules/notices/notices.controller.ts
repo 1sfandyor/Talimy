@@ -10,11 +10,18 @@ import {
   Query,
   UnauthorizedException,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common"
-import { createNoticeSchema, noticesQuerySchema, updateNoticeSchema, userTenantQuerySchema } from "@talimy/shared"
+import {
+  createNoticeSchema,
+  noticesQuerySchema,
+  updateNoticeSchema,
+  userTenantQuerySchema,
+} from "@talimy/shared"
 
-import { CurrentUser, type CurrentUser as CurrentUserPayload } from "@/common/decorators/current-user.decorator"
+import {
+  CurrentUser,
+  type CurrentUser as CurrentUserPayload,
+} from "@/common/decorators/current-user.decorator"
 import { Roles } from "@/common/decorators/roles.decorator"
 import { AuthGuard } from "@/common/guards/auth.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
@@ -32,8 +39,10 @@ export class NoticesController {
 
   @Get()
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
-  @UsePipes(new ZodValidationPipe(noticesQuerySchema))
-  list(@CurrentUser() user: CurrentUserPayload | null, @Query() query: NoticeQueryDto) {
+  list(
+    @CurrentUser() user: CurrentUserPayload | null,
+    @Query(new ZodValidationPipe(noticesQuerySchema)) query: NoticeQueryDto
+  ) {
     return this.noticesService.list(this.requireUser(user), query)
   }
 
