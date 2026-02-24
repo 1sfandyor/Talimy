@@ -62,6 +62,20 @@ def resolve_config_path() -> Path:
     return Path(raw)
 
 
+def _normalize_local_path(raw_path: str) -> Path:
+    raw = str(raw_path or "").strip()
+    if not raw:
+        return Path(".")
+    # WSL compatibility: convert Windows drive paths (C:/..., C:\...) to /mnt/c/...
+    if os.name != "nt":
+        m = re.match(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$", raw)
+        if m:
+            drive = m.group("drive").lower()
+            rest = m.group("rest").replace("\\", "/")
+            return Path(f"/mnt/{drive}/{rest}")
+    return Path(raw)
+
+
 def expand_env_placeholders(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: expand_env_placeholders(v) for k, v in value.items()}
@@ -101,7 +115,7 @@ class Config:
 
     @property
     def laptop_repo_path(self) -> Path:
-        return Path(str(self.raw.get("laptop_repo_path", ".")))
+        return _normalize_local_path(str(self.raw.get("laptop_repo_path", ".")))
 
     @property
     def tasks_file(self) -> Path:
