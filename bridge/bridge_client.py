@@ -628,6 +628,25 @@ def _dynamic_smoke_forbidden(command: str) -> str | None:
     return None
 
 
+_API_HOST_PREFIX_ROUTE_RE = re.compile(
+    r"(https://api\.talimy\.space)/(?!api(?:/|$))"
+    r"(notices?|assignments?|schedule|schedules|finance|payments|exams?|grades?|notifications?|events?|calendar)(?=[/?'\"` ]|$)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_known_api_host_prefix(command: str) -> tuple[str, bool]:
+    """Normalize known Talimy API host routes to include /api prefix.
+
+    Dynamic smoke sometimes generates https://api.talimy.space/<resource> while this deployment
+    uses Nest global prefix /api. We normalize only the known api host and common REST resources.
+    """
+    if not command or "api.talimy.space/" not in command.lower():
+        return command, False
+    normalized, count = _API_HOST_PREFIX_ROUTE_RE.subn(r"\1/api/\2", command)
+    return normalized, count > 0
+
+
 def _smoke_command_label_fallback(command: str) -> str:
     c = command.lower()
     if "api/health" in c:
@@ -785,6 +804,8 @@ def _build_dynamic_smoke_prompt(task: str, stage: str, cfg: Config) -> str:
             "Generate remote API smoke commands (curl-based) that validate the deployed feature.\n"
             f"Shell target: {'PowerShell (Windows)' if os.name == 'nt' else 'POSIX sh/bash (Linux/WSL)'}.\n"
             "Use placeholders exactly where needed: {{BASE_URL}}, {{TENANT_ID}}, {{ACCESS_TOKEN}}.\n"
+            "Talimy production API uses global Nest prefix /api on api.talimy.space; prefer {{BASE_URL}}/api/... routes.\n"
+            "Only try non-/api variant as explicit fallback when command intentionally probes route variants.\n"
             "Prefer lightweight assertion-oriented smoke checks (GET list/get-by-id/health/report) and avoid destructive operations unless required.\n"
         ),
     }.get(
@@ -916,6 +937,7 @@ def _run_command_set(
             "Keep command safe (no git push/pull/reset/checkout, no deploy commands).\n"
             f"Shell target: {'PowerShell (Windows)' if os.name == 'nt' else 'POSIX sh/bash (Linux/WSL)'}.\n"
             "Preserve placeholders if present: {{BASE_URL}}, {{TENANT_ID}}, {{ACCESS_TOKEN}}.\n"
+            "For Talimy on api.talimy.space, prefer /api/... route prefix unless explicitly testing route variants.\n"
             f"Stage: {stage}\n"
             f"Task: {task}\n"
             f"Failed command:\n{failed_command}\n\n"
@@ -992,6 +1014,11 @@ def _run_command_set(
     errors: list[str] = []
     for command in commands:
         rendered = command_renderer(command) if command_renderer else command
+        if stage == "post_deploy_smoke":
+            normalized_rendered, changed_prefix = _normalize_known_api_host_prefix(rendered)
+            if changed_prefix:
+                client_log("bridge", f"[{stage}] normalized route prefix to /api for known api.talimy.space command")
+                rendered = normalized_rendered
         test_name = _smoke_command_label(rendered, cfg, stage)
         if stage == "post_deploy_smoke" and event_job_id:
             send_bridge_event(
@@ -1076,6 +1103,11 @@ def _run_command_set(
                         message="Smoke cmd repaired by laptop Codex, retrying single command.",
                     )
                 repaired_rendered = command_renderer(repaired_command) if command_renderer else repaired_command
+                if stage == "post_deploy_smoke":
+                    normalized_repaired, changed_prefix2 = _normalize_known_api_host_prefix(repaired_rendered)
+                    if changed_prefix2:
+                        client_log("bridge", f"[{stage}] normalized repaired route prefix to /api for known api.talimy.space command")
+                        repaired_rendered = normalized_repaired
                 repaired_test_name = _smoke_command_label(repaired_rendered, cfg, stage)
                 client_log("bridge", f"[{stage}] retry repaired cmd={repaired_rendered}")
                 started2 = time.time()
@@ -1134,6 +1166,8 @@ def _run_command_set(
                 stdout_text = (res2.stdout or "").strip()
                 rendered = repaired_rendered
             errors.append(f"{stage} failed: {rendered}")
+            if stage == "post_deploy_smoke" and http_code == 404:
+                errors.append("Feature smoke route not found (HTTP 404): deploy rollout hali tugamagan bo'lishi mumkin yoki route prefix /api noto'g'ri tanlangan.")
             detail = (stderr_text or stdout_text).strip()
             if detail:
                 errors.append(detail[:1200])
@@ -2066,6 +2100,10 @@ def maybe_auto_fix_failure(task: str, cfg: Config, failure_result: dict[str, Any
     ):
         client_log("bridge", "auto-fix skipped: local tooling/deps missing (WSL env bootstrap needed)")
         client_log("bridge", "hint: repo root'da `bun install` ishlating, so'ng pipeline'ni qayta ishga tushiring")
+        return False
+    if stage == "post_deploy_smoke" and _feature_smoke_route_not_ready_detected(failure_result):
+        client_log("bridge", "auto-fix skipped: post_deploy_smoke route-not-ready (404/Cannot GET) deploy/prefix issue ko'rinmoqda")
+        client_log("bridge", "hint: deploy rollout tugaganini va /api route prefixni tekshirib, pipeline'ni qayta ishga tushiring")
         return False
     target_hints = _auto_fix_target_hints(task, stage, failure_result)
     reja_subtasks = _parse_reja_task_subtasks(task, cfg)
