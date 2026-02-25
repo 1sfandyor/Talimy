@@ -72,6 +72,7 @@ async function main() {
 
   let token = ""
   let createdNoticeId = ""
+  let currentUserId = ""
 
   // Health
   {
@@ -109,6 +110,10 @@ async function main() {
         pretty(resp)
       )
       token = resp.json.data.accessToken
+      const tokenPayloadPart = token.split(".")[1] || ""
+      const tokenPayload = JSON.parse(Buffer.from(tokenPayloadPart, "base64url").toString("utf8"))
+      currentUserId = tokenPayload.sub || ""
+      assertOrThrow(currentUserId, "Missing user id in JWT payload")
       markOk(t, "POST /api/auth/register -> 201")
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
@@ -187,6 +192,74 @@ async function main() {
 
       markOk(t, "POST/GET/PATCH/DELETE /api/notices -> 201/200/200/200")
       createdNoticeId = ""
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Notifications runtime (list/unread/send/mark-read)
+  {
+    const t = pushCase(createCase("notifications-runtime"))
+    try {
+      assertOrThrow(token, "Missing auth token from register")
+      assertOrThrow(currentUserId, "Missing current user id from register token")
+
+      const listResp = await httpJson(
+        `${baseUrl}/api/notifications?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(listResp.status === 200, "Notifications list expected 200", pretty(listResp))
+
+      const unreadResp = await httpJson(
+        `${baseUrl}/api/notifications/unread-count?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(unreadResp.status === 200, "Unread count expected 200", pretty(unreadResp))
+
+      const sendResp = await httpJson(`${baseUrl}/api/notifications/send`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          recipientUserIds: [currentUserId],
+          title: "integration smoke notification",
+          message: "integration smoke message",
+          channels: ["in_app"],
+        }),
+      })
+      assertOrThrow(
+        sendResp.status === 200 || sendResp.status === 201,
+        "Send expected 200/201",
+        pretty(sendResp)
+      )
+
+      const listAfterResp = await httpJson(
+        `${baseUrl}/api/notifications?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=20`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        listAfterResp.status === 200,
+        "Notifications list after send expected 200",
+        pretty(listAfterResp)
+      )
+      const rows = listAfterResp.json?.data ?? []
+      const target = Array.isArray(rows)
+        ? rows.find(
+            (row) =>
+              row?.title === "integration smoke notification" &&
+              row?.message === "integration smoke message"
+          )
+        : null
+      assertOrThrow(target?.id, "Sent in-app notification not found in list", pretty(listAfterResp))
+
+      const markReadResp = await httpJson(`${baseUrl}/api/notifications/${target.id}/read`, {
+        method: "PATCH",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, read: true }),
+      })
+      assertOrThrow(markReadResp.status === 200, "Mark-read expected 200", pretty(markReadResp))
+
+      markOk(t, "GET list/unread + POST send + PATCH :id/read -> 200")
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
