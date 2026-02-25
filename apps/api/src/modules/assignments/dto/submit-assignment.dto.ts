@@ -1,25 +1,19 @@
-import { Type } from "class-transformer"
-import { IsNumber, IsOptional, IsString, IsUrl, IsUUID, MaxLength, Min } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import {
+  gradeAssignmentSubmissionSchema,
+  submitAssignmentSchema,
+  type GradeAssignmentSubmissionInput,
+  type SubmitAssignmentInput,
+} from "@talimy/shared"
 
-export class SubmitAssignmentDto {
-  @IsUUID()
-  studentId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const SubmitAssignmentDtoBase = createZodDto(submitAssignmentSchema) as ZodDtoClass
+const GradeAssignmentSubmissionDtoBase = createZodDto(
+  gradeAssignmentSubmissionSchema
+) as ZodDtoClass
 
-  @IsString()
-  @MaxLength(500)
-  @IsOptional()
-  @IsUrl()
-  fileUrl?: string
-}
+export class SubmitAssignmentDto extends SubmitAssignmentDtoBase {}
+export interface SubmitAssignmentDto extends SubmitAssignmentInput {}
 
-export class GradeAssignmentSubmissionDto {
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  score!: number
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  feedback?: string
-}
+export class GradeAssignmentSubmissionDto extends GradeAssignmentSubmissionDtoBase {}
+export interface GradeAssignmentSubmissionDto extends GradeAssignmentSubmissionInput {}

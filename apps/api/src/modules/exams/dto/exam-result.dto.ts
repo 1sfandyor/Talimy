@@ -1,36 +1,8 @@
-import {
-  IsArray,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  ValidateNested,
-} from "class-validator"
-import { Type } from "class-transformer"
+import { createZodDto } from "nestjs-zod"
+import { enterExamResultsSchema, type EnterExamResultsInput } from "@talimy/shared"
 
-class ExamResultRecordDto {
-  @IsUUID()
-  studentId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const EnterExamResultsDtoBase = createZodDto(enterExamResultsSchema) as ZodDtoClass
 
-  @Type(() => Number)
-  @IsNumber()
-  score!: number
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(10)
-  grade?: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  rank?: string
-}
-
-export class EnterExamResultsDto {
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ExamResultRecordDto)
-  records!: ExamResultRecordDto[]
-}
+export class EnterExamResultsDto extends EnterExamResultsDtoBase {}
+export interface EnterExamResultsDto extends EnterExamResultsInput {}

@@ -1,28 +1,8 @@
-import { IsOptional, IsUUID } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { gradeQuerySchema, type GradeQueryInput } from "@talimy/shared"
 
-import { PaginationDto } from "@/common/dto/pagination.dto"
+type ZodDtoClass = abstract new (...args: never[]) => object
+const GradeQueryDtoBase = createZodDto(gradeQuerySchema) as ZodDtoClass
 
-export class GradeQueryDto extends PaginationDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @IsUUID()
-  studentId?: string
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string
-
-  @IsOptional()
-  @IsUUID()
-  subjectId?: string
-
-  @IsOptional()
-  @IsUUID()
-  termId?: string
-
-  @IsOptional()
-  @IsUUID()
-  teacherId?: string
-}
+export class GradeQueryDto extends GradeQueryDtoBase {}
+export interface GradeQueryDto extends GradeQueryInput {}

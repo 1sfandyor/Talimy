@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  UseGuards,
-  UsePipes,
-} from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 import {
   createGradeScaleSchema,
   createGradeSchema,
@@ -35,68 +24,73 @@ export class GradesController {
   constructor(private readonly gradesService: GradesService) {}
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createGradeSchema))
-  enter(@Body() payload: CreateGradeDto) {
+  enter(@Body(new ZodValidationPipe(createGradeSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateGradeDto
     return this.gradesService.enter(payload)
   }
 
   @Get()
-  @UsePipes(new ZodValidationPipe(gradeQuerySchema))
-  list(@Query() query: GradeQueryDto) {
+  list(@Query(new ZodValidationPipe(gradeQuerySchema)) queryInput: unknown) {
+    const query = queryInput as GradeQueryDto
     return this.gradesService.list(query)
   }
 
   @Get("student/:studentId")
   byStudent(
     @Param("studentId") studentId: string,
-    @Query(new ZodValidationPipe(gradeQuerySchema)) query: GradeQueryDto
+    @Query(new ZodValidationPipe(gradeQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as GradeQueryDto
     return this.gradesService.getByStudent(query.tenantId, studentId, query)
   }
 
   @Get("class/:classId")
   byClass(
     @Param("classId") classId: string,
-    @Query(new ZodValidationPipe(gradeQuerySchema)) query: GradeQueryDto
+    @Query(new ZodValidationPipe(gradeQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as GradeQueryDto
     return this.gradesService.getByClass(query.tenantId, classId, query)
   }
 
   @Get("report")
-  @UsePipes(new ZodValidationPipe(gradeQuerySchema))
-  report(@Query() query: GradeQueryDto) {
+  report(@Query(new ZodValidationPipe(gradeQuerySchema)) queryInput: unknown) {
+    const query = queryInput as GradeQueryDto
     return this.gradesService.report(query)
   }
 
   @Get("scales")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  listScales(@Query() query: { tenantId: string }) {
+  listScales(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.gradesService.listScales(query.tenantId)
   }
 
   @Post("scales")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(createGradeScaleSchema))
-  createScale(@Body() payload: CreateGradeScaleDto) {
+  createScale(@Body(new ZodValidationPipe(createGradeScaleSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateGradeScaleDto
     return this.gradesService.createScale(payload)
   }
 
   @Patch("scales/:id")
   @Roles("platform_admin", "school_admin")
   updateScale(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string,
-    @Body(new ZodValidationPipe(updateGradeScaleSchema)) payload: UpdateGradeScaleDto
+    @Body(new ZodValidationPipe(updateGradeScaleSchema)) payloadInput: unknown
   ) {
-    return this.gradesService.updateScale(tenantId, id, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateGradeScaleDto
+    return this.gradesService.updateScale(query.tenantId, id, payload)
   }
 
   @Delete("scales/:id")
   @Roles("platform_admin", "school_admin")
   deleteScale(
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string
   ) {
+    const query = queryInput as { tenantId: string }
     return this.gradesService.deleteScale(query.tenantId, id)
   }
 }

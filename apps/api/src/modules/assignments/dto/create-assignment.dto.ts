@@ -1,86 +1,17 @@
-import { Type } from "class-transformer"
+import { createZodDto } from "nestjs-zod"
 import {
-  IsDateString,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUrl,
-  IsUUID,
-  MaxLength,
-  Min,
-} from "class-validator"
+  createAssignmentSchema,
+  updateAssignmentSchema,
+  type CreateAssignmentInput,
+  type UpdateAssignmentInput,
+} from "@talimy/shared"
 
-export class CreateAssignmentDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const CreateAssignmentDtoBase = createZodDto(createAssignmentSchema) as ZodDtoClass
+const UpdateAssignmentDtoBase = createZodDto(updateAssignmentSchema) as ZodDtoClass
 
-  @IsUUID()
-  teacherId!: string
+export class CreateAssignmentDto extends CreateAssignmentDtoBase {}
+export interface CreateAssignmentDto extends CreateAssignmentInput {}
 
-  @IsUUID()
-  subjectId!: string
-
-  @IsUUID()
-  classId!: string
-
-  @IsString()
-  @MaxLength(255)
-  title!: string
-
-  @IsOptional()
-  @IsString()
-  description?: string
-
-  @IsDateString()
-  dueDate!: string
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  totalPoints!: number
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  @IsUrl()
-  fileUrl?: string
-}
-
-export class UpdateAssignmentDto {
-  @IsOptional()
-  @IsUUID()
-  teacherId?: string
-
-  @IsOptional()
-  @IsUUID()
-  subjectId?: string
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  title?: string
-
-  @IsOptional()
-  @IsString()
-  description?: string | null
-
-  @IsOptional()
-  @IsDateString()
-  dueDate?: string
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  totalPoints?: number
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  @IsUrl()
-  fileUrl?: string | null
-}
+export class UpdateAssignmentDto extends UpdateAssignmentDtoBase {}
+export interface UpdateAssignmentDto extends UpdateAssignmentInput {}

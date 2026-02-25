@@ -11,7 +11,6 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
-  UsePipes,
 } from "@nestjs/common"
 import { FileInterceptor } from "@nestjs/platform-express"
 import {
@@ -41,16 +40,15 @@ export class AssignmentsController {
   constructor(private readonly assignmentsService: AssignmentsService) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(assignmentQuerySchema))
-  list(@Query() query: AssignmentQueryDto) {
+  list(@Query(new ZodValidationPipe(assignmentQuerySchema)) queryInput: unknown) {
+    const query = queryInput as AssignmentQueryDto
     return this.assignmentsService.list(query)
   }
 
   @Get("stats")
   @Roles("platform_admin", "school_admin", "teacher")
-  getOverviewStats(
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
-  ) {
+  getOverviewStats(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.assignmentsService.getOverviewStats(query.tenantId)
   }
 
@@ -58,26 +56,35 @@ export class AssignmentsController {
   @Roles("platform_admin", "school_admin", "teacher")
   getAssignmentStats(
     @Param("id") id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
     return this.assignmentsService.getAssignmentStats(query.tenantId, id)
   }
 
   @Get(":id/submissions")
   @Roles("platform_admin", "school_admin", "teacher")
-  @UsePipes(new ZodValidationPipe(assignmentQuerySchema))
-  listSubmissions(@Param("id") id: string, @Query() query: AssignmentQueryDto) {
+  listSubmissions(
+    @Param("id") id: string,
+    @Query(new ZodValidationPipe(assignmentQuerySchema)) queryInput: unknown
+  ) {
+    const query = queryInput as AssignmentQueryDto
     return this.assignmentsService.listSubmissions(query.tenantId, id, query)
   }
 
   @Get(":id")
-  getById(@Param("id") id: string, @Query("tenantId") tenantId: string) {
-    return this.assignmentsService.getById(tenantId, id)
+  getById(
+    @Param("id") id: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.assignmentsService.getById(query.tenantId, id)
   }
 
   @Post()
   @Roles("platform_admin", "school_admin", "teacher")
-  create(@Body(new ZodValidationPipe(createAssignmentSchema)) payload: CreateAssignmentDto) {
+  create(@Body(new ZodValidationPipe(createAssignmentSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateAssignmentDto
     return this.assignmentsService.create(payload)
   }
 
@@ -85,18 +92,21 @@ export class AssignmentsController {
   @Roles("platform_admin", "school_admin", "teacher")
   update(
     @Param("id") id: string,
-    @Query("tenantId") tenantId: string,
-    @Body(new ZodValidationPipe(updateAssignmentSchema)) payload: UpdateAssignmentDto
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Body(new ZodValidationPipe(updateAssignmentSchema)) payloadInput: unknown
   ) {
-    return this.assignmentsService.update(tenantId, id, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateAssignmentDto
+    return this.assignmentsService.update(query.tenantId, id, payload)
   }
 
   @Delete(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   delete(
     @Param("id") id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
     return this.assignmentsService.delete(query.tenantId, id)
   }
 
@@ -126,19 +136,21 @@ export class AssignmentsController {
   )
   submit(
     @Param("id") id: string,
-    @Query("tenantId") tenantId: string,
-    @Body(new ZodValidationPipe(submitAssignmentSchema)) payload: SubmitAssignmentDto,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Body(new ZodValidationPipe(submitAssignmentSchema)) payloadInput: unknown,
     @UploadedFile() file?: { originalname?: string; buffer?: Buffer }
   ) {
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as SubmitAssignmentDto
     if (!payload.fileUrl && !file) {
       throw new BadRequestException("Either fileUrl or multipart file is required")
     }
 
     if (file && !payload.fileUrl) {
-      return this.assignmentsService.submitWithUploadedFile(tenantId, id, payload, file)
+      return this.assignmentsService.submitWithUploadedFile(query.tenantId, id, payload, file)
     }
 
-    return this.assignmentsService.submit(tenantId, id, payload)
+    return this.assignmentsService.submit(query.tenantId, id, payload)
   }
 
   @Patch(":id/submissions/:submissionId/grade")
@@ -146,10 +158,12 @@ export class AssignmentsController {
   gradeSubmission(
     @Param("id") id: string,
     @Param("submissionId") submissionId: string,
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Body(new ZodValidationPipe(gradeAssignmentSubmissionSchema))
-    payload: GradeAssignmentSubmissionDto
+    payloadInput: unknown
   ) {
-    return this.assignmentsService.gradeSubmission(tenantId, id, submissionId, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as GradeAssignmentSubmissionDto
+    return this.assignmentsService.gradeSubmission(query.tenantId, id, submissionId, payload)
   }
 }

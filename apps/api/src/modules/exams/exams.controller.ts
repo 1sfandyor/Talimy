@@ -9,7 +9,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common"
 import {
   createExamSchema,
@@ -37,46 +36,51 @@ export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(examQuerySchema))
-  list(@Query() query: ExamQueryDto) {
+  list(@Query(new ZodValidationPipe(examQuerySchema)) queryInput: unknown) {
+    const query = queryInput as ExamQueryDto
     return this.examsService.list(query)
   }
 
   @Get("student/:studentId/results")
   getResultsByStudent(
     @Param("studentId") studentId: string,
-    @Query(new ZodValidationPipe(examQuerySchema)) query: ExamQueryDto
+    @Query(new ZodValidationPipe(examQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as ExamQueryDto
     return this.examsService.getResultsByStudent(query.tenantId, studentId, query)
   }
 
   @Get(":id/results")
   getResultsByExam(
     @Param("id") id: string,
-    @Query(new ZodValidationPipe(examQuerySchema)) query: ExamQueryDto
+    @Query(new ZodValidationPipe(examQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as ExamQueryDto
     return this.examsService.getResultsByExam(query.tenantId, id, query)
   }
 
   @Get(":id/stats")
   getStats(
     @Param("id") id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
     return this.examsService.getStats(query.tenantId, id)
   }
 
   @Get(":id")
   getById(
     @Param("id", new ParseUUIDPipe()) id: string,
-    @Query("tenantId", new ParseUUIDPipe()) tenantId: string
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
-    return this.examsService.getById(tenantId, id)
+    const query = queryInput as { tenantId: string }
+    return this.examsService.getById(query.tenantId, id)
   }
 
   @Post()
   @Roles("platform_admin", "school_admin")
-  create(@Body(new ZodValidationPipe(createExamSchema)) payload: CreateExamDto) {
+  create(@Body(new ZodValidationPipe(createExamSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateExamDto
     return this.examsService.create(payload)
   }
 
@@ -84,18 +88,21 @@ export class ExamsController {
   @Roles("platform_admin", "school_admin")
   update(
     @Param("id") id: string,
-    @Query("tenantId") tenantId: string,
-    @Body(new ZodValidationPipe(updateExamSchema)) payload: UpdateExamDto
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Body(new ZodValidationPipe(updateExamSchema)) payloadInput: unknown
   ) {
-    return this.examsService.update(tenantId, id, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateExamDto
+    return this.examsService.update(query.tenantId, id, payload)
   }
 
   @Delete(":id")
   @Roles("platform_admin", "school_admin")
   delete(
     @Param("id") id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
     return this.examsService.delete(query.tenantId, id)
   }
 
@@ -103,9 +110,11 @@ export class ExamsController {
   @Roles("platform_admin", "school_admin", "teacher")
   enterResults(
     @Param("id") id: string,
-    @Query("tenantId") tenantId: string,
-    @Body(new ZodValidationPipe(enterExamResultsSchema)) payload: EnterExamResultsDto
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Body(new ZodValidationPipe(enterExamResultsSchema)) payloadInput: unknown
   ) {
-    return this.examsService.enterResults(tenantId, id, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as EnterExamResultsDto
+    return this.examsService.enterResults(query.tenantId, id, payload)
   }
 }

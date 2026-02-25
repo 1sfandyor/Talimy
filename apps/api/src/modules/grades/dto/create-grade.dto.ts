@@ -1,106 +1,24 @@
-import { Type } from "class-transformer"
+import { createZodDto } from "nestjs-zod"
 import {
-  IsArray,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  ValidateNested,
-} from "class-validator"
+  createGradeScaleSchema,
+  createGradeSchema,
+  updateGradeScaleSchema,
+  type CreateGradeInput,
+  type CreateGradeScaleInput,
+  type UpdateGradeScaleInput,
+} from "@talimy/shared"
 
-class GradeEntryRecordDto {
-  @IsUUID()
-  studentId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
 
-  @Type(() => Number)
-  @IsNumber()
-  score!: number
+const CreateGradeDtoBase = createZodDto(createGradeSchema) as ZodDtoClass
+const CreateGradeScaleDtoBase = createZodDto(createGradeScaleSchema) as ZodDtoClass
+const UpdateGradeScaleDtoBase = createZodDto(updateGradeScaleSchema) as ZodDtoClass
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(10)
-  grade?: string
+export class CreateGradeDto extends CreateGradeDtoBase {}
+export interface CreateGradeDto extends CreateGradeInput {}
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  comment?: string
-}
+export class CreateGradeScaleDto extends CreateGradeScaleDtoBase {}
+export interface CreateGradeScaleDto extends CreateGradeScaleInput {}
 
-export class CreateGradeDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string
-
-  @IsUUID()
-  subjectId!: string
-
-  @IsUUID()
-  termId!: string
-
-  @IsOptional()
-  @IsUUID()
-  teacherId?: string
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => GradeEntryRecordDto)
-  records!: GradeEntryRecordDto[]
-}
-
-export class CreateGradeScaleDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsString()
-  @MaxLength(100)
-  name!: string
-
-  @Type(() => Number)
-  @IsNumber()
-  minScore!: number
-
-  @Type(() => Number)
-  @IsNumber()
-  maxScore!: number
-
-  @IsString()
-  @MaxLength(10)
-  grade!: string
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  gpa?: number
-}
-
-export class UpdateGradeScaleDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  name?: string
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  minScore?: number
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  maxScore?: number
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(10)
-  grade?: string
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  gpa?: number | null
-}
+export class UpdateGradeScaleDto extends UpdateGradeScaleDtoBase {}
+export interface UpdateGradeScaleDto extends UpdateGradeScaleInput {}
