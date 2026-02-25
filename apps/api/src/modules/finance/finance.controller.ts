@@ -28,6 +28,7 @@ import { CreatePaymentPlanDto, UpdatePaymentPlanDto } from "./dto/payment-plan.d
 @Roles("platform_admin", "school_admin")
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
+  private static readonly idParamSchema = z.object({ id: z.string().uuid() })
 
   @Get("overview")
   getOverview(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
@@ -50,10 +51,11 @@ export class FinanceController {
   @Get("fee-structures/:id")
   getFeeStructureById(
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string
+    @Param(new ZodValidationPipe(FinanceController.idParamSchema)) paramsInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.financeService.getFeeStructureById(query.tenantId, id)
+    return this.financeService.getFeeStructureById(query.tenantId, params.id)
   }
 
   @Post("fee-structures")
@@ -67,22 +69,24 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   updateFeeStructure(
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(FinanceController.idParamSchema)) paramsInput: unknown,
     @Body(new ZodValidationPipe(updateFeeStructureSchema)) payloadInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdateFeeStructureDto
-    return this.financeService.updateFeeStructure(query.tenantId, id, payload)
+    return this.financeService.updateFeeStructure(query.tenantId, params.id, payload)
   }
 
   @Delete("fee-structures/:id")
   @Roles("platform_admin", "school_admin")
   deleteFeeStructure(
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string
+    @Param(new ZodValidationPipe(FinanceController.idParamSchema)) paramsInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.financeService.deleteFeeStructure(query.tenantId, id)
+    return this.financeService.deleteFeeStructure(query.tenantId, params.id)
   }
 
   @Get("payment-plans")
@@ -102,22 +106,24 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   updatePaymentPlan(
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(FinanceController.idParamSchema)) paramsInput: unknown,
     @Body(new ZodValidationPipe(updatePaymentPlanSchema)) payloadInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdatePaymentPlanDto
-    return this.financeService.updatePaymentPlan(query.tenantId, id, payload)
+    return this.financeService.updatePaymentPlan(query.tenantId, params.id, payload)
   }
 
   @Delete("payment-plans/:id")
   @Roles("platform_admin", "school_admin")
   deletePaymentPlan(
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string
+    @Param(new ZodValidationPipe(FinanceController.idParamSchema)) paramsInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.financeService.deletePaymentPlan(query.tenantId, id)
+    return this.financeService.deletePaymentPlan(query.tenantId, params.id)
   }
 
   @Get("payments")
@@ -137,12 +143,13 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   updatePayment(
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(FinanceController.idParamSchema)) paramsInput: unknown,
     @Body(new ZodValidationPipe(updatePaymentSchema)) payloadInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdatePaymentDto
-    return this.financeService.updatePayment(query.tenantId, id, payload)
+    return this.financeService.updatePayment(query.tenantId, params.id, payload)
   }
 
   @Get("invoices")

@@ -22,6 +22,7 @@ import { ScheduleService } from "./schedule.service"
 @Roles("platform_admin", "school_admin", "teacher")
 export class ScheduleController {
   constructor(private readonly scheduleService: ScheduleService) {}
+  private static readonly idParamSchema = z.object({ id: z.string().uuid() })
 
   @Get()
   list(@Query(new ZodValidationPipe(scheduleQuerySchema)) queryInput: unknown) {
@@ -31,11 +32,12 @@ export class ScheduleController {
 
   @Get(":id")
   getById(
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(ScheduleController.idParamSchema)) paramsInput: unknown,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.scheduleService.getById(query.tenantId, id)
+    return this.scheduleService.getById(query.tenantId, params.id)
   }
 
   @Post()
@@ -48,22 +50,24 @@ export class ScheduleController {
   @Patch(":id")
   @Roles("platform_admin", "school_admin")
   update(
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(ScheduleController.idParamSchema)) paramsInput: unknown,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Body(new ZodValidationPipe(updateScheduleSchema)) payloadInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdateScheduleDto
-    return this.scheduleService.update(query.tenantId, id, payload)
+    return this.scheduleService.update(query.tenantId, params.id, payload)
   }
 
   @Delete(":id")
   @Roles("platform_admin", "school_admin")
   delete(
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(ScheduleController.idParamSchema)) paramsInput: unknown,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.scheduleService.delete(query.tenantId, id)
+    return this.scheduleService.delete(query.tenantId, params.id)
   }
 }

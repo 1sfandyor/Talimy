@@ -36,6 +36,7 @@ import { NoticesService } from "./notices.service"
 @UseGuards(AuthGuard, RolesGuard, TenantGuard)
 export class NoticesController {
   constructor(private readonly noticesService: NoticesService) {}
+  private static readonly idParamSchema = z.object({ id: z.string().uuid() })
 
   @Get()
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
@@ -50,11 +51,12 @@ export class NoticesController {
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
   getById(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(NoticesController.idParamSchema)) paramsInput: unknown,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.noticesService.getById(this.requireUser(user), query.tenantId, id)
+    return this.noticesService.getById(this.requireUser(user), query.tenantId, params.id)
   }
 
   @Post()
@@ -70,23 +72,25 @@ export class NoticesController {
   @Patch(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   update(
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(NoticesController.idParamSchema)) paramsInput: unknown,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Body(new ZodValidationPipe(updateNoticeSchema)) payloadInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdateNoticeDto
-    return this.noticesService.update(query.tenantId, id, payload)
+    return this.noticesService.update(query.tenantId, params.id, payload)
   }
 
   @Delete(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   delete(
-    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Param(new ZodValidationPipe(NoticesController.idParamSchema)) paramsInput: unknown,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.noticesService.delete(query.tenantId, id)
+    return this.noticesService.delete(query.tenantId, params.id)
   }
 
   private requireUser(user: CurrentUserPayload | null): CurrentUserPayload {
