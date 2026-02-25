@@ -5,7 +5,6 @@ import { NestFactory } from "@nestjs/core"
 
 import { AppModule } from "./app.module"
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter"
-import { HttpExceptionFilter } from "./common/filters/http-exception.filter"
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor"
 import { TimeoutInterceptor } from "./common/interceptors/timeout.interceptor"
 import { TransformInterceptor } from "./common/interceptors/transform.interceptor"
@@ -30,7 +29,7 @@ async function bootstrap(): Promise<void> {
     new TimeoutInterceptor(),
     new TransformInterceptor()
   )
-  app.useGlobalFilters(new HttpExceptionFilter(), new AllExceptionsFilter())
+  app.useGlobalFilters(new AllExceptionsFilter())
 
   const port = Number(process.env.PORT ?? 4000)
   await app.listen(port)

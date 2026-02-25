@@ -2,6 +2,7 @@
 import { strict as assert } from "node:assert"
 import { test } from "node:test"
 
+import { BadRequestException, NotFoundException } from "@nestjs/common"
 import { z } from "zod"
 
 import { AllExceptionsFilter } from "./all-exceptions.filter"
@@ -70,6 +71,63 @@ test("AllExceptionsFilter hides database-like internals behind stable message", 
     error: {
       code: "DATABASE_ERROR",
       message: "Database operation failed",
+    },
+  })
+})
+
+test("AllExceptionsFilter preserves structured HttpException payload", () => {
+  const filter = new AllExceptionsFilter()
+  const ctx = createHost()
+
+  filter.catch(
+    new BadRequestException({
+      code: "VALIDATION_ERROR",
+      message: "Validation failed",
+      details: [{ field: "id", message: "Invalid UUID format" }],
+    }),
+    ctx.host
+  )
+
+  assert.equal(ctx.result.statusCode, 400)
+  assert.deepEqual(ctx.result.jsonBody, {
+    success: false,
+    error: {
+      code: "VALIDATION_ERROR",
+      message: "Validation failed",
+      details: [{ field: "id", message: "Invalid UUID format" }],
+    },
+  })
+})
+
+test("AllExceptionsFilter normalizes HttpException array messages", () => {
+  const filter = new AllExceptionsFilter()
+  const ctx = createHost()
+
+  filter.catch(new BadRequestException(["email must be an email", "password too short"]), ctx.host)
+
+  assert.equal(ctx.result.statusCode, 400)
+  assert.deepEqual(ctx.result.jsonBody, {
+    success: false,
+    error: {
+      code: "VALIDATION_ERROR",
+      message: "Validation failed",
+      details: [{ message: "email must be an email" }, { message: "password too short" }],
+    },
+  })
+})
+
+test("AllExceptionsFilter applies default code for HttpException status", () => {
+  const filter = new AllExceptionsFilter()
+  const ctx = createHost()
+
+  filter.catch(new NotFoundException("Exam not found"), ctx.host)
+
+  assert.equal(ctx.result.statusCode, 404)
+  assert.deepEqual(ctx.result.jsonBody, {
+    success: false,
+    error: {
+      code: "NOT_FOUND",
+      message: "Exam not found",
     },
   })
 })

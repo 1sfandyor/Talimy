@@ -42,6 +42,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private normalizeException(exception: unknown): { error: ErrorBody } {
+    if (exception instanceof HttpException) {
+      return {
+        error: this.normalizeHttpException(exception.getStatus(), exception.getResponse()),
+      }
+    }
+
     if (exception instanceof ZodError) {
       return {
         error: {
@@ -73,6 +79,48 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
   }
 
+  private normalizeHttpException(status: number, exceptionResponse: unknown): ErrorBody {
+    if (typeof exceptionResponse === "string") {
+      return {
+        code: this.defaultCodeForStatus(status),
+        message: exceptionResponse,
+      }
+    }
+
+    if (exceptionResponse && typeof exceptionResponse === "object") {
+      const payload = exceptionResponse as Record<string, unknown>
+      const messageValue = payload.message
+
+      if (typeof payload.code === "string" && typeof messageValue === "string") {
+        return {
+          code: payload.code,
+          message: messageValue,
+          ...(payload.details !== undefined ? { details: payload.details } : {}),
+        }
+      }
+
+      if (Array.isArray(messageValue)) {
+        return {
+          code: "VALIDATION_ERROR",
+          message: "Validation failed",
+          details: messageValue.map((message) => ({ message })),
+        }
+      }
+
+      if (typeof messageValue === "string") {
+        return {
+          code: this.defaultCodeForStatus(status),
+          message: messageValue,
+        }
+      }
+    }
+
+    return {
+      code: this.defaultCodeForStatus(status),
+      message: "Request failed",
+    }
+  }
+
   private isDatabaseLikeError(exception: unknown): boolean {
     if (!exception || typeof exception !== "object") return false
     const payload = exception as { code?: unknown; constraint?: unknown; detail?: unknown }
@@ -81,5 +129,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       typeof payload.constraint === "string" ||
       typeof payload.detail === "string"
     )
+  }
+
+  private defaultCodeForStatus(status: number): string {
+    if (status === HttpStatus.BAD_REQUEST) return "BAD_REQUEST"
+    if (status === HttpStatus.UNAUTHORIZED) return "UNAUTHORIZED"
+    if (status === HttpStatus.FORBIDDEN) return "FORBIDDEN"
+    if (status === HttpStatus.NOT_FOUND) return "NOT_FOUND"
+    if (status === HttpStatus.CONFLICT) return "CONFLICT"
+    if (status >= 500) return "INTERNAL_SERVER_ERROR"
+    return "HTTP_EXCEPTION"
   }
 }
