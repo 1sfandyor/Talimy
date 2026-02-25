@@ -337,7 +337,7 @@ async function main() {
         {
           method: "PATCH",
           headers: { ...authHeader(), "Content-Type": "application/json" },
-          body: JSON.stringify({ tenantId, qualification: "Master", experienceYears: 4 }),
+          body: JSON.stringify({ qualification: "Master", experienceYears: 4 }),
         }
       )
       assertOrThrow(

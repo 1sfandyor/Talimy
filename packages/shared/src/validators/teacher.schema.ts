@@ -25,7 +25,6 @@ export const createTeacherSchema = z.object({
 })
 
 export const updateTeacherSchema = z.object({
-  tenantId: z.string().uuid(),
   employeeId: z.string().min(2).optional(),
   gender: z.enum(["male", "female"]).optional(),
   joinDate: z.string().date().optional(),
