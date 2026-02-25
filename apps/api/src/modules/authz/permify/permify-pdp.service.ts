@@ -29,6 +29,12 @@ export class PermifyPdpService {
     }
 
     try {
+      const isPlatformAdmin = input.roles.includes("platform_admin")
+      const isSchoolAdmin = input.roles.includes("school_admin")
+      const isSchoolAdminAll = isSchoolAdmin && input.userGenderScope === "all"
+      const isTargetGenderAllowed =
+        isSchoolAdmin && !!input.targetGender && input.userGenderScope === input.targetGender
+
       const response = await this.withTimeout(
         this.getClient().permission.check({
           tenantId: input.tenantId,
@@ -54,6 +60,10 @@ export class PermifyPdpService {
               roles: input.roles,
               userGenderScope: input.userGenderScope,
               targetGender: input.targetGender ?? "",
+              isPlatformAdmin,
+              isSchoolAdmin,
+              isSchoolAdminAll,
+              isTargetGenderAllowed,
               entity: input.entity,
               action: input.action,
             },

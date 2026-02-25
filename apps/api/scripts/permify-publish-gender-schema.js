@@ -7,28 +7,16 @@ const permify = require("@permify/permify-node")
 const DEFAULT_SCHEMA = `
 entity user {}
 
-rule is_platform_admin(roles string[]) {
-  "platform_admin" in roles
-}
-
-rule is_school_admin(roles string[]) {
-  "school_admin" in roles
-}
-
-rule can_mutate_by_gender(roles string[], userGenderScope string, targetGender string) {
-  ("school_admin" in roles) and ((userGenderScope == "all") or (userGenderScope == targetGender))
-}
-
 entity teacher_gender_policy {
-  permission gender_list = is_platform_admin(context.data.roles) or is_school_admin(context.data.roles)
-  permission gender_create = is_platform_admin(context.data.roles) or can_mutate_by_gender(context.data.roles, context.data.userGenderScope, context.data.targetGender)
-  permission gender_update = is_platform_admin(context.data.roles) or can_mutate_by_gender(context.data.roles, context.data.userGenderScope, context.data.targetGender)
+  permission gender_list = context.data.isPlatformAdmin or context.data.isSchoolAdmin
+  permission gender_create = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
+  permission gender_update = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
 }
 
 entity student_gender_policy {
-  permission gender_list = is_platform_admin(context.data.roles) or is_school_admin(context.data.roles)
-  permission gender_create = is_platform_admin(context.data.roles) or can_mutate_by_gender(context.data.roles, context.data.userGenderScope, context.data.targetGender)
-  permission gender_update = is_platform_admin(context.data.roles) or can_mutate_by_gender(context.data.roles, context.data.userGenderScope, context.data.targetGender)
+  permission gender_list = context.data.isPlatformAdmin or context.data.isSchoolAdmin
+  permission gender_create = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
+  permission gender_update = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
 }
 `.trim()
 
@@ -122,6 +110,10 @@ async function main() {
           roles: ["school_admin"],
           userGenderScope: "all",
           targetGender: "",
+          isPlatformAdmin: false,
+          isSchoolAdmin: true,
+          isSchoolAdminAll: true,
+          isTargetGenderAllowed: false,
           entity: "teacher",
           action: "list",
         },
