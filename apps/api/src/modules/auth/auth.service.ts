@@ -33,13 +33,21 @@ export class AuthService {
       throw new UnauthorizedException("Email already exists")
     }
 
+    const role = payload.role ?? "school_admin"
+    if (role === "platform_admin") {
+      const expectedBootstrapKey = process.env.AUTH_PLATFORM_ADMIN_BOOTSTRAP_KEY
+      if (!expectedBootstrapKey || payload.bootstrapKey !== expectedBootstrapKey) {
+        throw new UnauthorizedException("Platform admin registration is disabled")
+      }
+    }
+
     const user: StoredUser = {
       id: randomUUID(),
       fullName: payload.fullName,
       email: normalizedEmail,
       tenantId: payload.tenantId,
       passwordHash: bcrypt.hashSync(payload.password, AuthService.BCRYPT_ROUNDS),
-      roles: ["school_admin"],
+      roles: [role],
       genderScope: "all",
     }
     await this.store.saveUser(user)

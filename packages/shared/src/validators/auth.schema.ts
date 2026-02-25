@@ -10,6 +10,8 @@ export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   tenantId: z.string().min(2),
+  role: z.enum(["school_admin", "platform_admin"]).optional(),
+  bootstrapKey: z.string().min(8).optional(),
 })
 
 export const refreshTokenSchema = z.object({
