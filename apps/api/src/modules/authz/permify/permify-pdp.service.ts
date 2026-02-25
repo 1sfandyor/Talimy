@@ -53,7 +53,7 @@ export class PermifyPdpService {
             data: {
               roles: input.roles,
               userGenderScope: input.userGenderScope,
-              targetGender: input.targetGender ?? null,
+              targetGender: input.targetGender ?? "",
               entity: input.entity,
               action: input.action,
             },
