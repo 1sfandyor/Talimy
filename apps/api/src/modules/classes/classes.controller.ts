@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  UseGuards,
-  UsePipes,
-} from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 import {
   createClassSchema,
   listClassesQuerySchema,
@@ -35,65 +24,82 @@ export class ClassesController {
   constructor(private readonly classesService: ClassesService) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(listClassesQuerySchema))
-  list(@Query() query: ListClassesQueryDto) {
+  list(@Query(new ZodValidationPipe(listClassesQuerySchema)) queryInput: unknown) {
+    const query = queryInput as ListClassesQueryDto
     return this.classesService.list(query)
   }
 
   @Get(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getById(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.classesService.getById(tenantId, id)
+  getById(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.classesService.getById(query.tenantId, id)
   }
 
   @Get(":id/students")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  students(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.classesService.getStudents(tenantId, id)
+  students(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.classesService.getStudents(query.tenantId, id)
   }
 
   @Get(":id/teachers")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  teachers(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.classesService.getTeachers(tenantId, id)
+  teachers(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.classesService.getTeachers(query.tenantId, id)
   }
 
   @Get(":id/schedule")
   schedule(
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string
   ) {
+    const query = queryInput as { tenantId: string }
     return this.classesService.getSchedule(query.tenantId, id)
   }
 
   @Get(":id/stats")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  stats(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.classesService.getStats(tenantId, id)
+  stats(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.classesService.getStats(query.tenantId, id)
   }
 
   @Post()
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(createClassSchema))
-  create(@Body() payload: CreateClassDto) {
+  create(@Body(new ZodValidationPipe(createClassSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateClassDto
     return this.classesService.create(payload)
   }
 
   @Patch(":id")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(updateClassSchema))
   update(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string,
-    @Body() payload: UpdateClassDto
+    @Body(new ZodValidationPipe(updateClassSchema)) payloadInput: unknown
   ) {
-    return this.classesService.update(tenantId, id, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateClassDto
+    return this.classesService.update(query.tenantId, id, payload)
   }
 
   @Delete(":id")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  delete(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.classesService.delete(tenantId, id)
+  delete(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.classesService.delete(query.tenantId, id)
   }
 }

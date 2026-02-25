@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  UseGuards,
-  UsePipes,
-} from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 import {
   createParentSchema,
   listParentsQuerySchema,
@@ -35,62 +24,72 @@ export class ParentsController {
   constructor(private readonly parentsService: ParentsService) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(listParentsQuerySchema))
-  list(@Query() query: ListParentsQueryDto) {
+  list(@Query(new ZodValidationPipe(listParentsQuerySchema)) queryInput: unknown) {
+    const query = queryInput as ListParentsQueryDto
     return this.parentsService.list(query)
   }
 
   @Get(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getById(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.parentsService.getById(tenantId, id)
+  getById(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.parentsService.getById(query.tenantId, id)
   }
 
   @Get(":id/children")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  children(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.parentsService.getChildren(tenantId, id)
+  children(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.parentsService.getChildren(query.tenantId, id)
   }
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createParentSchema))
-  create(@Body() payload: CreateParentDto) {
+  create(@Body(new ZodValidationPipe(createParentSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateParentDto
     return this.parentsService.create(payload)
   }
 
   @Patch(":id")
-  @UsePipes(new ZodValidationPipe(updateParentSchema))
   update(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string,
-    @Body() payload: UpdateParentDto
+    @Body(new ZodValidationPipe(updateParentSchema)) payloadInput: unknown
   ) {
-    return this.parentsService.update(tenantId, id, payload)
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateParentDto
+    return this.parentsService.update(query.tenantId, id, payload)
   }
 
   @Post(":id/students/:studentId")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
   linkStudent(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string,
     @Param("studentId") studentId: string
   ) {
-    return this.parentsService.linkStudent(tenantId, id, studentId)
+    const query = queryInput as { tenantId: string }
+    return this.parentsService.linkStudent(query.tenantId, id, studentId)
   }
 
   @Delete(":id/students/:studentId")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
   unlinkStudent(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Param("id") id: string,
     @Param("studentId") studentId: string
   ) {
-    return this.parentsService.unlinkStudent(tenantId, id, studentId)
+    const query = queryInput as { tenantId: string }
+    return this.parentsService.unlinkStudent(query.tenantId, id, studentId)
   }
 
   @Delete(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  delete(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.parentsService.delete(tenantId, id)
+  delete(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id") id: string
+  ) {
+    const query = queryInput as { tenantId: string }
+    return this.parentsService.delete(query.tenantId, id)
   }
 }

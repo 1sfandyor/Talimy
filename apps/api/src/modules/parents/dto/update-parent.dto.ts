@@ -1,20 +1,8 @@
-import { IsOptional, IsString, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { updateParentSchema, type UpdateParentInput } from "@talimy/shared"
 
-export class UpdateParentDto {
-  @IsOptional()
-  @IsString()
-  phone?: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const UpdateParentDtoBase = createZodDto(updateParentSchema) as ZodDtoClass
 
-  @IsOptional()
-  @IsString()
-  occupation?: string
-
-  @IsOptional()
-  @IsString()
-  address?: string
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  relationship?: string
-}
+export class UpdateParentDto extends UpdateParentDtoBase {}
+export interface UpdateParentDto extends UpdateParentInput {}

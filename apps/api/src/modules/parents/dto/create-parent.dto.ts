@@ -1,31 +1,8 @@
-import { IsArray, IsOptional, IsString, IsUUID, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { createParentSchema, type CreateParentInput } from "@talimy/shared"
 
-export class CreateParentDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const CreateParentDtoBase = createZodDto(createParentSchema) as ZodDtoClass
 
-  @IsUUID()
-  userId!: string
-
-  @IsOptional()
-  @IsString()
-  phone?: string
-
-  @IsOptional()
-  @IsString()
-  occupation?: string
-
-  @IsOptional()
-  @IsString()
-  address?: string
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  relationship?: string
-
-  @IsOptional()
-  @IsArray()
-  @IsUUID("4", { each: true })
-  studentIds?: string[]
-}
+export class CreateParentDto extends CreateParentDtoBase {}
+export interface CreateParentDto extends CreateParentInput {}

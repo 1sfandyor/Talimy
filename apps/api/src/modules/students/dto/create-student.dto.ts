@@ -1,43 +1,8 @@
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { createStudentSchema, type CreateStudentInput } from "@talimy/shared"
 
-export class CreateStudentDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const CreateStudentDtoBase = createZodDto(createStudentSchema) as ZodDtoClass
 
-  @IsUUID()
-  userId!: string
-
-  @IsUUID()
-  @IsOptional()
-  classId?: string
-
-  @IsString()
-  @MinLength(2)
-  studentId!: string
-
-  @IsDateString()
-  enrollmentDate!: string
-
-  @IsOptional()
-  @IsDateString()
-  dateOfBirth?: string
-
-  @IsOptional()
-  @IsString()
-  bloodGroup?: string
-
-  @IsOptional()
-  @IsString()
-  address?: string
-
-  @IsIn(["active", "inactive", "graduated", "transferred"])
-  @IsOptional()
-  status?: "active" | "inactive" | "graduated" | "transferred"
-
-  @IsString()
-  @MinLength(2)
-  fullName!: string
-
-  @IsIn(["male", "female"])
-  gender!: "male" | "female"
-}
+export class CreateStudentDto extends CreateStudentDtoBase {}
+export interface CreateStudentDto extends CreateStudentInput {}

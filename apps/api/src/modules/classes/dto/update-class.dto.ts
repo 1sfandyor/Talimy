@@ -1,27 +1,8 @@
-import { IsInt, IsOptional, IsString, IsUUID, Max, Min, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { updateClassSchema, type UpdateClassInput } from "@talimy/shared"
 
-export class UpdateClassDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  name?: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const UpdateClassDtoBase = createZodDto(updateClassSchema) as ZodDtoClass
 
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  grade?: string
-
-  @IsOptional()
-  @IsString()
-  section?: string
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(200)
-  capacity?: number
-
-  @IsOptional()
-  @IsUUID()
-  academicYearId?: string
-}
+export class UpdateClassDto extends UpdateClassDtoBase {}
+export interface UpdateClassDto extends UpdateClassInput {}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards, UsePipes } from "@nestjs/common"
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common"
 import { attendanceQuerySchema, markAttendanceSchema } from "@talimy/shared"
 
 import { Roles } from "@/common/decorators/roles.decorator"
@@ -18,34 +18,32 @@ export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
   @Post("mark")
-  @UsePipes(new ZodValidationPipe(markAttendanceSchema))
-  mark(@Body() payload: MarkAttendanceDto) {
+  mark(@Body(new ZodValidationPipe(markAttendanceSchema)) payloadInput: unknown) {
+    const payload = payloadInput as MarkAttendanceDto
     return this.attendanceService.mark(payload)
   }
 
   @Get("class/:classId")
-  @UsePipes(new ZodValidationPipe(attendanceQuerySchema))
   getByClass(
     @Param("classId") classId: string,
-    @Query("tenantId") tenantId: string,
-    @Query() query: AttendanceQueryDto
+    @Query(new ZodValidationPipe(attendanceQuerySchema)) queryInput: unknown
   ) {
-    return this.attendanceService.getByClass(tenantId, classId, query)
+    const query = queryInput as AttendanceQueryDto
+    return this.attendanceService.getByClass(query.tenantId, classId, query)
   }
 
   @Get("student/:studentId")
-  @UsePipes(new ZodValidationPipe(attendanceQuerySchema))
   getByStudent(
     @Param("studentId") studentId: string,
-    @Query("tenantId") tenantId: string,
-    @Query() query: AttendanceQueryDto
+    @Query(new ZodValidationPipe(attendanceQuerySchema)) queryInput: unknown
   ) {
-    return this.attendanceService.getByStudent(tenantId, studentId, query)
+    const query = queryInput as AttendanceQueryDto
+    return this.attendanceService.getByStudent(query.tenantId, studentId, query)
   }
 
   @Get("report")
-  @UsePipes(new ZodValidationPipe(attendanceQuerySchema))
-  report(@Query() query: AttendanceQueryDto) {
+  report(@Query(new ZodValidationPipe(attendanceQuerySchema)) queryInput: unknown) {
+    const query = queryInput as AttendanceQueryDto
     return this.attendanceService.report(query)
   }
 }

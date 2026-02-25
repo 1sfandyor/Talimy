@@ -1,28 +1,8 @@
-import { IsDateString, IsIn, IsOptional, IsUUID } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { attendanceQuerySchema, type AttendanceQueryInput } from "@talimy/shared"
 
-import { PaginationDto } from "@/common/dto/pagination.dto"
+type ZodDtoClass = abstract new (...args: never[]) => object
+const AttendanceQueryDtoBase = createZodDto(attendanceQuerySchema) as ZodDtoClass
 
-export class AttendanceQueryDto extends PaginationDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string
-
-  @IsOptional()
-  @IsUUID()
-  studentId?: string
-
-  @IsOptional()
-  @IsDateString()
-  dateFrom?: string
-
-  @IsOptional()
-  @IsDateString()
-  dateTo?: string
-
-  @IsOptional()
-  @IsIn(["present", "absent", "late", "excused"])
-  status?: "present" | "absent" | "late" | "excused"
-}
+export class AttendanceQueryDto extends AttendanceQueryDtoBase {}
+export interface AttendanceQueryDto extends AttendanceQueryInput {}

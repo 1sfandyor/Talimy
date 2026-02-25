@@ -1,26 +1,8 @@
-import { IsInt, IsOptional, IsString, IsUUID, Max, Min, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { createClassSchema, type CreateClassInput } from "@talimy/shared"
 
-export class CreateClassDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const CreateClassDtoBase = createZodDto(createClassSchema) as ZodDtoClass
 
-  @IsString()
-  @MinLength(2)
-  name!: string
-
-  @IsString()
-  @MinLength(1)
-  grade!: string
-
-  @IsOptional()
-  @IsString()
-  section?: string
-
-  @IsInt()
-  @Min(1)
-  @Max(200)
-  capacity!: number
-
-  @IsUUID()
-  academicYearId!: string
-}
+export class CreateClassDto extends CreateClassDtoBase {}
+export interface CreateClassDto extends CreateClassInput {}
