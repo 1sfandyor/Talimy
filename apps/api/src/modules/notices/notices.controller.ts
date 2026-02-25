@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -16,7 +17,6 @@ import {
   updateNoticeSchema,
   userTenantQuerySchema,
 } from "@talimy/shared"
-import { z } from "zod"
 
 import {
   CurrentUser,
@@ -36,7 +36,6 @@ import { NoticesService } from "./notices.service"
 @UseGuards(AuthGuard, RolesGuard, TenantGuard)
 export class NoticesController {
   constructor(private readonly noticesService: NoticesService) {}
-  private static readonly idValueSchema = z.string().uuid()
 
   @Get()
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
@@ -52,10 +51,9 @@ export class NoticesController {
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
   getById(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Param("id") idInput: string,
+    @Param("id", new ParseUUIDPipe()) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
-    const id = NoticesController.idValueSchema.parse(idInput)
     const query = queryInput as { tenantId: string }
     return this.noticesService.getById(this.requireUser(user), query.tenantId, id)
   }
@@ -73,11 +71,10 @@ export class NoticesController {
   @Patch(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   update(
-    @Param("id") idInput: string,
+    @Param("id", new ParseUUIDPipe()) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Body(new ZodValidationPipe(updateNoticeSchema)) payloadInput: unknown
   ) {
-    const id = NoticesController.idValueSchema.parse(idInput)
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdateNoticeDto
     return this.noticesService.update(query.tenantId, id, payload)
@@ -86,10 +83,9 @@ export class NoticesController {
   @Delete(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   delete(
-    @Param("id") idInput: string,
+    @Param("id", new ParseUUIDPipe()) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
-    const id = NoticesController.idValueSchema.parse(idInput)
     const query = queryInput as { tenantId: string }
     return this.noticesService.delete(query.tenantId, id)
   }
