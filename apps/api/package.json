@@ -9,6 +9,7 @@
     "lint:fix": "bunx eslint . --fix",
     "typecheck": "tsc --noEmit",
     "smoke:error-contract": "node scripts/smoke-error-contract.js",
+    "smoke:integration-baseline": "node scripts/smoke-integration-baseline.js",
     "permify:schema:publish": "node scripts/permify-publish-gender-schema.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
