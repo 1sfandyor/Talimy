@@ -36,6 +36,7 @@
     "tooling/*"
   ],
   "dependencies": {
-    "@sentry/nestjs": "^10.39.0"
+    "@sentry/nestjs": "^10.39.0",
+    "nestjs-zod": "^5.1.1"
   }
 }

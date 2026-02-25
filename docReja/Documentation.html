@@ -10574,6 +10574,8 @@ style='width:6.5in;margin-left:-.35pt;border-collapse:collapse;border:none'>
 
 <p class=MsoNormal><span style='font-size:10.0pt;color:black'>FAZA 2 implementation evidence update (2026-02-22): Grades Module (`2.11`) server smoke test passed for `GET /api/grades`, `GET /api/grades/report`, and `GET/POST/PATCH/DELETE /api/grades/scales`; validation wiring fixes were applied for `grades/scales` query/body Zod pipes. Exams Module (`2.12`) backend implementation added with tenant-safe exam CRUD, bulk exam results entry, results by exam/student, and exam statistics endpoints (`apps/api/src/modules/exams/*`, `packages/shared/src/validators/exam.schema.ts`).</span></p>
 
+<p class=MsoNormal><span style='font-size:10.0pt;color:black'>Validation Architecture Note (2026-02-25): Backend REST request contracts use shared Zod schemas as the single source of truth. DTO classes should be derived from the same schemas (Hybrid pattern, e.g. `nestjs-zod` / `createZodDto`) to prevent runtime drift between global `ValidationPipe` (`class-validator`) and route-level Zod validation. `Teachers Module (2.6)` is the reference migration target for this pattern, and rollout priority before/through `2.6` is: Auth (`2.3`) -&gt; Tenants (`2.4`) -&gt; Users (`2.5`) -&gt; Teachers (`2.6`).</span></p>
+
 </div>
 
 </body>

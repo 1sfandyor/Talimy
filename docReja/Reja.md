@@ -466,6 +466,19 @@ Status: In execution (track by phase/task status markers below)
 
 - **Task Exit Criteria**: all subtasks done + Global DoD satisfied.
 
+### FAZA 2 Validation Strategy Update (2026-02-25)
+
+- **Decision (backend REST input contracts)**: Shared Zod schemas are the canonical source of truth. DTO classes should be derived from those schemas (Hybrid pattern: Zod + auto-generated DTO via `nestjs-zod` / `createZodDto`) to avoid contract drift between `class-validator` decorators and shared Zod schemas.
+- **Reason**: `2.6 Teachers` runtime smoke exposed a real production mismatch where duplicate validation layers (`ValidationPipe` + route-level Zod) rejected valid-looking `POST /api/teachers` payloads with generic `Validation failed`.
+- **POC scope completed**: `2.6 Teachers Module` DTOs (`create/update/list`) migrated to `createZodDto(...)`; controller inputs standardized to Zod-validated query/body flow.
+- **Rollout audit (Tasks <= 2.6)**:
+  - `2.1 NestJS Project Setup`: No module DTO migration required (infrastructure task).
+  - `2.2 Common Utilities`: Keep `zod-validation.pipe.ts`; no endpoint DTO migration, but this task owns the shared validation infrastructure.
+  - `2.3 Auth Module`: Apply Hybrid Zod+generated DTO to auth request DTOs (`login/register/refresh/logout`) to remove duplicate schema maintenance.
+  - `2.4 Tenants Module`: Apply Hybrid pattern to create/update/billing DTOs and query DTOs used with route-level `ZodValidationPipe`.
+  - `2.5 Users Module`: High priority for migration (`create/update/role/password/avatar` DTOs) because user APIs are dependency roots for later modules.
+  - `2.6 Teachers Module`: POC/first migration target (current standard reference for subsequent modules).
+
 ### Task 2.3: Auth Module
 
 - **Task Owner**: Backend Lead

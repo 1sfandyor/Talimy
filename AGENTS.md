@@ -207,6 +207,9 @@ export class TeachersService {
 ```
 
 - **Thin controllers, fat services**. Controllers only handle HTTP; services hold logic.
+- **Validation (backend, strict)**: Shared Zod schema is the single source of truth for request contracts.
+- **DTO generation (backend, strict)**: For REST modules, DTO classes should be derived from shared Zod schemas (preferred: `nestjs-zod` / `createZodDto`) instead of duplicating `class-validator` rules by hand.
+- **No dual runtime validation drift**: Do not validate the same request body/query with independent `class-validator` and Zod rules unless they are explicitly generated from the same schema source.
 - **Validation**: Zod pipes on all inputs. Use shared schemas from `@talimy/shared`.
 - **Guards**: Apply in order: `AuthGuard` → `RolesGuard` → `TenantGuard` → `GenderGuard`.
 - **Error handling**: Throw NestJS HTTP exceptions. Global filter catches all.
