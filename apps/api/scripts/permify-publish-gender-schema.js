@@ -6,17 +6,28 @@ const permify = require("@permify/permify-node")
 
 const DEFAULT_SCHEMA = `
 entity user {}
+entity tenant {
+  relation platform_admin @user
+  relation school_admin @user
+
+  action can_list_gender_resources = platform_admin or school_admin
+  action can_mutate_gender_resources = platform_admin or school_admin
+}
 
 entity teacher_gender_policy {
-  permission gender_list = context.data.isPlatformAdmin or context.data.isSchoolAdmin
-  permission gender_create = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
-  permission gender_update = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
+  relation tenant @tenant
+
+  action gender_list = tenant.can_list_gender_resources
+  action gender_create = tenant.can_mutate_gender_resources
+  action gender_update = tenant.can_mutate_gender_resources
 }
 
 entity student_gender_policy {
-  permission gender_list = context.data.isPlatformAdmin or context.data.isSchoolAdmin
-  permission gender_create = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
-  permission gender_update = context.data.isPlatformAdmin or context.data.isSchoolAdminAll or context.data.isTargetGenderAllowed
+  relation tenant @tenant
+
+  action gender_list = tenant.can_list_gender_resources
+  action gender_create = tenant.can_mutate_gender_resources
+  action gender_update = tenant.can_mutate_gender_resources
 }
 `.trim()
 
@@ -104,18 +115,21 @@ async function main() {
         relation: "",
       },
       context: {
-        tuples: [],
+        tuples: [
+          {
+            entity: { type: "teacher_gender_policy", id: `${tenantId}:teacher` },
+            relation: "tenant",
+            subject: { type: "tenant", id: tenantId, relation: "" },
+          },
+          {
+            entity: { type: "tenant", id: tenantId },
+            relation: "school_admin",
+            subject: { type: "user", id: "smoke-probe", relation: "" },
+          },
+        ],
         attributes: [],
         data: {
-          roles: ["school_admin"],
-          userGenderScope: "all",
-          targetGender: "",
-          isPlatformAdmin: false,
-          isSchoolAdmin: true,
-          isSchoolAdminAll: true,
-          isTargetGenderAllowed: false,
-          entity: "teacher",
-          action: "list",
+          source: "permify-publish-gender-schema probe",
         },
       },
       arguments: [],

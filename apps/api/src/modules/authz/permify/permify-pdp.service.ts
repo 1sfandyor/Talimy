@@ -31,9 +31,36 @@ export class PermifyPdpService {
     try {
       const isPlatformAdmin = input.roles.includes("platform_admin")
       const isSchoolAdmin = input.roles.includes("school_admin")
-      const isSchoolAdminAll = isSchoolAdmin && input.userGenderScope === "all"
-      const isTargetGenderAllowed =
-        isSchoolAdmin && !!input.targetGender && input.userGenderScope === input.targetGender
+      const contextualTuples = [
+        {
+          entity: {
+            type: this.toPermifyEntityType(input.entity),
+            id: this.toPermifyEntityId(input),
+          },
+          relation: "tenant",
+          subject: {
+            type: "tenant",
+            id: input.tenantId,
+            relation: "",
+          },
+        },
+      ]
+
+      if (isPlatformAdmin) {
+        contextualTuples.push({
+          entity: { type: "tenant", id: input.tenantId },
+          relation: "platform_admin",
+          subject: { type: "user", id: input.userId, relation: "" },
+        })
+      }
+
+      if (isSchoolAdmin) {
+        contextualTuples.push({
+          entity: { type: "tenant", id: input.tenantId },
+          relation: "school_admin",
+          subject: { type: "user", id: input.userId, relation: "" },
+        })
+      }
 
       const response = await this.withTimeout(
         this.getClient().permission.check({
@@ -54,16 +81,11 @@ export class PermifyPdpService {
             relation: "",
           },
           context: {
-            tuples: [],
+            tuples: contextualTuples as [],
             attributes: [],
             data: {
-              roles: input.roles,
               userGenderScope: input.userGenderScope,
               targetGender: input.targetGender ?? "",
-              isPlatformAdmin,
-              isSchoolAdmin,
-              isSchoolAdminAll,
-              isTargetGenderAllowed,
               entity: input.entity,
               action: input.action,
             },
