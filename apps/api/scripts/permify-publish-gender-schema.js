@@ -8,15 +8,15 @@ const DEFAULT_SCHEMA = `
 entity user {}
 
 entity teacher_gender_policy {
-  permission gender_list = ('platform_admin' in context.data.roles) or ('school_admin' in context.data.roles)
-  permission gender_create = ('platform_admin' in context.data.roles) or (('school_admin' in context.data.roles) and ((context.data.userGenderScope == 'all') or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
-  permission gender_update = ('platform_admin' in context.data.roles) or (('school_admin' in context.data.roles) and ((context.data.userGenderScope == 'all') or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
+  permission gender_list = ("platform_admin" in context.data.roles) or ("school_admin" in context.data.roles)
+  permission gender_create = ("platform_admin" in context.data.roles) or (("school_admin" in context.data.roles) and ((context.data.userGenderScope == "all") or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
+  permission gender_update = ("platform_admin" in context.data.roles) or (("school_admin" in context.data.roles) and ((context.data.userGenderScope == "all") or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
 }
 
 entity student_gender_policy {
-  permission gender_list = ('platform_admin' in context.data.roles) or ('school_admin' in context.data.roles)
-  permission gender_create = ('platform_admin' in context.data.roles) or (('school_admin' in context.data.roles) and ((context.data.userGenderScope == 'all') or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
-  permission gender_update = ('platform_admin' in context.data.roles) or (('school_admin' in context.data.roles) and ((context.data.userGenderScope == 'all') or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
+  permission gender_list = ("platform_admin" in context.data.roles) or ("school_admin" in context.data.roles)
+  permission gender_create = ("platform_admin" in context.data.roles) or (("school_admin" in context.data.roles) and ((context.data.userGenderScope == "all") or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
+  permission gender_update = ("platform_admin" in context.data.roles) or (("school_admin" in context.data.roles) and ((context.data.userGenderScope == "all") or ((context.data.targetGender != null) and (context.data.userGenderScope == context.data.targetGender))))
 }
 `.trim()
 
