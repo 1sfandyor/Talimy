@@ -1,16 +1,29 @@
 import { z } from "zod"
 
-export const listStudentsQuerySchema = z.object({
-  tenantId: z.string().uuid(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  search: z.string().optional(),
-  sort: z.string().optional(),
-  order: z.enum(["asc", "desc"]).default("desc"),
-  classId: z.string().uuid().optional(),
-  gender: z.enum(["male", "female"]).optional(),
-  status: z.enum(["active", "inactive", "graduated", "transferred"]).optional(),
-})
+export const listStudentsQuerySchema = z
+  .object({
+    tenantId: z.string().uuid(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    search: z.string().optional(),
+    sort: z.string().optional(),
+    order: z.enum(["asc", "desc"]).default("desc"),
+    classId: z.string().uuid().optional(),
+    gender: z.enum(["male", "female"]).optional(),
+    status: z.enum(["active", "inactive", "graduated", "transferred"]).optional(),
+    enrollmentDateFrom: z.string().date().optional(),
+    enrollmentDateTo: z.string().date().optional(),
+  })
+  .refine(
+    (data) =>
+      !data.enrollmentDateFrom ||
+      !data.enrollmentDateTo ||
+      new Date(data.enrollmentDateFrom) <= new Date(data.enrollmentDateTo),
+    {
+      message: "enrollmentDateFrom must be before or equal to enrollmentDateTo",
+      path: ["enrollmentDateFrom"],
+    }
+  )
 
 export const createStudentSchema = z.object({
   tenantId: z.string().uuid(),

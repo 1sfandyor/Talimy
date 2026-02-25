@@ -9,7 +9,7 @@ import {
   subjects,
   users,
 } from "@talimy/database"
-import { and, asc, desc, eq, ilike, isNull, ne, or, type SQL, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, ilike, isNull, lte, ne, or, type SQL, sql } from "drizzle-orm"
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 
 import { CreateStudentDto } from "./dto/create-student.dto"
@@ -33,6 +33,12 @@ export class StudentsRepository {
     if (query.classId) filters.push(eq(students.classId, query.classId))
     if (query.gender) filters.push(eq(students.gender, query.gender))
     if (query.status) filters.push(eq(students.status, query.status))
+    if (query.enrollmentDateFrom) {
+      filters.push(gte(students.enrollmentDate, query.enrollmentDateFrom))
+    }
+    if (query.enrollmentDateTo) {
+      filters.push(lte(students.enrollmentDate, query.enrollmentDateTo))
+    }
     if (query.search) {
       const search = query.search.trim()
       if (search.length > 0) {
