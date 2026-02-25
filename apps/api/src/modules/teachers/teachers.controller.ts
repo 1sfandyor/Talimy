@@ -9,7 +9,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common"
 import {
   createTeacherSchema,
@@ -45,14 +44,14 @@ export class TeachersController {
   ) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(listTeachersQuerySchema))
   async list(
     @CurrentUser() currentUser: CurrentUserType | null,
-    @Query() query: ListTeachersQueryDto
+    @Query(new ZodValidationPipe(listTeachersQuerySchema)) query: unknown
   ) {
+    const listQuery = query as ListTeachersQueryDto
     if (currentUser && currentUser.roles?.includes("school_admin")) {
       await this.permifyPdpService.assertGenderAccess({
-        tenantId: query.tenantId,
+        tenantId: listQuery.tenantId,
         userId: currentUser.id,
         roles: currentUser.roles ?? [],
         userGenderScope: currentUser.genderScope ?? "all",
@@ -61,42 +60,51 @@ export class TeachersController {
       })
     }
     if (currentUser?.genderScope && currentUser.genderScope !== "all") {
-      query.gender = currentUser.genderScope
+      listQuery.gender = currentUser.genderScope
     }
-    return this.teachersService.list(query)
+    return this.teachersService.list(listQuery)
   }
 
   @Get(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getById(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.teachersService.getById(tenantId, id)
+  getById(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    const tenantQuery = query as { tenantId: string }
+    return this.teachersService.getById(tenantQuery.tenantId, id)
   }
 
   @Get(":id/schedule")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  schedule(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.teachersService.getSchedule(tenantId, id)
+  schedule(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    const tenantQuery = query as { tenantId: string }
+    return this.teachersService.getSchedule(tenantQuery.tenantId, id)
   }
 
   @Get(":id/classes")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  classes(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.teachersService.getClasses(tenantId, id)
+  classes(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    const tenantQuery = query as { tenantId: string }
+    return this.teachersService.getClasses(tenantQuery.tenantId, id)
   }
 
   @Get(":id/subjects")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  subjects(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.teachersService.getSubjects(tenantId, id)
+  subjects(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    const tenantQuery = query as { tenantId: string }
+    return this.teachersService.getSubjects(tenantQuery.tenantId, id)
   }
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createTeacherSchema))
   async create(
     @CurrentUser() currentUser: CurrentUserType | null,
-    // Zod pipe is the source of truth here; avoid duplicate global class-validator
-    // checks drifting from shared schema and blocking valid payloads.
-    @Body() payload: unknown
+    @Body(new ZodValidationPipe(createTeacherSchema)) payload: unknown
   ) {
     const createPayload = payload as CreateTeacherDto
     if (currentUser && currentUser.roles?.includes("school_admin")) {
@@ -119,17 +127,17 @@ export class TeachersController {
   }
 
   @Patch(":id")
-  @UsePipes(new ZodValidationPipe(updateTeacherSchema))
   async update(
     @CurrentUser() currentUser: CurrentUserType | null,
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
     @Param("id") id: string,
-    @Body() payload: unknown
+    @Body(new ZodValidationPipe(updateTeacherSchema)) payload: unknown
   ) {
+    const tenantQuery = query as { tenantId: string }
     const updatePayload = payload as UpdateTeacherDto
     if (currentUser && currentUser.roles?.includes("school_admin")) {
       await this.permifyPdpService.assertGenderAccess({
-        tenantId,
+        tenantId: tenantQuery.tenantId,
         userId: currentUser.id,
         roles: currentUser.roles ?? [],
         userGenderScope: currentUser.genderScope ?? "all",
@@ -143,12 +151,15 @@ export class TeachersController {
         throw new ForbiddenException("Gender scope mismatch")
       }
     }
-    return this.teachersService.update(tenantId, id, updatePayload)
+    return this.teachersService.update(tenantQuery.tenantId, id, updatePayload)
   }
 
   @Delete(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  delete(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.teachersService.delete(tenantId, id)
+  delete(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    const tenantQuery = query as { tenantId: string }
+    return this.teachersService.delete(tenantQuery.tenantId, id)
   }
 }
