@@ -1,59 +1,17 @@
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import {
+  createNoticeSchema,
+  type CreateNoticeInput,
+  type UpdateNoticeInput,
+  updateNoticeSchema,
+} from "@talimy/shared"
 
-type NoticeTargetRole = "all" | "teachers" | "students" | "parents"
-type NoticePriority = "low" | "medium" | "high" | "urgent"
+type ZodDtoClass = abstract new (...args: never[]) => object
+const CreateNoticeDtoBase = createZodDto(createNoticeSchema) as ZodDtoClass
+const UpdateNoticeDtoBase = createZodDto(updateNoticeSchema) as ZodDtoClass
 
-export class CreateNoticeDto {
-  @IsUUID()
-  tenantId!: string
+export class CreateNoticeDto extends CreateNoticeDtoBase {}
+export interface CreateNoticeDto extends CreateNoticeInput {}
 
-  @IsString()
-  @MaxLength(255)
-  title!: string
-
-  @IsString()
-  @MaxLength(5000)
-  content!: string
-
-  @IsIn(["all", "teachers", "students", "parents"])
-  targetRole!: NoticeTargetRole
-
-  @IsOptional()
-  @IsIn(["low", "medium", "high", "urgent"])
-  priority?: NoticePriority
-
-  @IsOptional()
-  @IsString()
-  publishDate?: string
-
-  @IsOptional()
-  @IsString()
-  expiryDate?: string
-}
-
-export class UpdateNoticeDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  title?: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  content?: string
-
-  @IsOptional()
-  @IsIn(["all", "teachers", "students", "parents"])
-  targetRole?: NoticeTargetRole
-
-  @IsOptional()
-  @IsIn(["low", "medium", "high", "urgent"])
-  priority?: NoticePriority
-
-  @IsOptional()
-  @IsString()
-  publishDate?: string
-
-  @IsOptional()
-  expiryDate?: string | null
-}
+export class UpdateNoticeDto extends UpdateNoticeDtoBase {}
+export interface UpdateNoticeDto extends UpdateNoticeInput {}

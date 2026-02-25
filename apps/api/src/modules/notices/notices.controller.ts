@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -17,6 +16,7 @@ import {
   updateNoticeSchema,
   userTenantQuerySchema,
 } from "@talimy/shared"
+import { z } from "zod"
 
 import {
   CurrentUser,
@@ -50,9 +50,10 @@ export class NoticesController {
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
   getById(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Param("id", new ParseUUIDPipe()) id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
     return this.noticesService.getById(this.requireUser(user), query.tenantId, id)
   }
 
@@ -60,27 +61,31 @@ export class NoticesController {
   @Roles("platform_admin", "school_admin", "teacher")
   create(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Body(new ZodValidationPipe(createNoticeSchema)) payload: CreateNoticeDto
+    @Body(new ZodValidationPipe(createNoticeSchema)) payloadInput: unknown
   ) {
+    const payload = payloadInput as CreateNoticeDto
     return this.noticesService.create(this.requireUser(user), payload)
   }
 
   @Patch(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   update(
-    @Param("id", new ParseUUIDPipe()) id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
-    @Body(new ZodValidationPipe(updateNoticeSchema)) payload: UpdateNoticeDto
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Body(new ZodValidationPipe(updateNoticeSchema)) payloadInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateNoticeDto
     return this.noticesService.update(query.tenantId, id, payload)
   }
 
   @Delete(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   delete(
-    @Param("id", new ParseUUIDPipe()) id: string,
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string }
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
     return this.noticesService.delete(query.tenantId, id)
   }
 
