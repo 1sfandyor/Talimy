@@ -718,6 +718,7 @@ bun run test:e2e               # Playwright E2E tests
 10. **Mandatory quick checks after UI setup**: verify `components.json` (`tailwind.css` path), `src/app/globals.css` presence, and TS path aliases (`@/*`, `@talimy/ui/*`) and then report actionable next tasks.
 11. **Diff hygiene is mandatory**: when editing a file, change only target lines; unchanged neighboring lines (headers/keys/values) MUST NOT be deleted and re-added. After edits, verify with `git diff --word-diff -- <file>` and ensure only intended tokens changed.
 12. **Best-practice first (strict)**: Do NOT choose temporary / pragmatic / quick-fix workarounds as the primary solution. Default to the cleanest, most correct, long-term, best-practice implementation even if it takes longer.
+13. **No "smallest quick fix" decision rule (strict)**: When a bug is found, do NOT prioritize the smallest / fastest patch if it leaves architectural inconsistency in place. Prefer the root-cause fix that aligns the module with the project's intended standard (even if the patch is larger).
     -11. **Env-path precision is mandatory**: when asking the user to add/update environment variables, the agent MUST provide a single exact file path per variable based on scope (e.g., `apps/api/.env` or `apps/web/.env.local`) and MUST NOT use ambiguous alternatives like "A yoki B".
 
 ### After Writing Code
@@ -740,6 +741,7 @@ bun run test:e2e               # Playwright E2E tests
 - Do NOT store secrets in code. Use environment variables.
 - Do NOT reformat or rewrite unrelated code when making targeted changes.
 - Do NOT ship temporary / pragmatic / quick-fix workarounds as final solutions. Use clean, correct, best-practice implementations by default.
+- Do NOT justify a patch primarily because it is the \"smallest\", \"fastest\", or \"least risky\" if a clearer best-practice/root-cause fix is available.
 
 ---
 
