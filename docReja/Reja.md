@@ -506,6 +506,7 @@ Status: In execution (track by phase/task status markers below)
 - **Task Owner**: Backend Lead
 - **Task Dependency**: Task 2.2 completed
 - **Task Estimate**: 19h
+- **Implementation note (2026-02-25 fix)**: `AuthStoreRepository` in-memory user store production architecturega mos emas edi (register/login DB `users` jadvali bilan sync bo'lmagan). Auth user credential storage DB-backed (`public.users`) qilinishi talab etiladi va shu root-cause fix qo'llandi. Refresh-token revoke storage esa `2.3.4 Session management (Redis-backed)` to'liq yakunlanguncha vaqtincha memory-backed qolishi mumkin.
 
 | Subtask ID | Work item                                                                                  | Owner        | Estimate | Dependency | Acceptance                                                                                                                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------ | ------------ | -------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -21,15 +21,15 @@ export class AuthService {
     private readonly tokenService: AuthTokenService
   ) {}
 
-  login(payload: LoginDto): AuthSession {
-    const identity = this.validateUserCredentials(payload.email, payload.password)
+  async login(payload: LoginDto): Promise<AuthSession> {
+    const identity = await this.validateUserCredentials(payload.email, payload.password)
     if (!identity) throw new UnauthorizedException("Invalid credentials")
     return this.tokenService.createSession(identity)
   }
 
-  register(payload: RegisterDto): AuthSession {
+  async register(payload: RegisterDto): Promise<AuthSession> {
     const normalizedEmail = payload.email.toLowerCase()
-    if (this.store.hasUserByEmail(normalizedEmail)) {
+    if (await this.store.hasUserByEmail(normalizedEmail)) {
       throw new UnauthorizedException("Email already exists")
     }
 
@@ -42,7 +42,7 @@ export class AuthService {
       roles: ["school_admin"],
       genderScope: "all",
     }
-    this.store.saveUser(user)
+    await this.store.saveUser(user)
 
     return this.tokenService.createSession({
       sub: user.id,
@@ -53,13 +53,13 @@ export class AuthService {
     })
   }
 
-  refresh(payload: RefreshTokenDto): AuthSession {
+  async refresh(payload: RefreshTokenDto): Promise<AuthSession> {
     const tokenPayload = this.tokenService.verifyRefreshTokenPayload(payload.refreshToken)
     if (this.store.isRefreshJtiRevoked(tokenPayload.jti)) {
       throw new UnauthorizedException("Refresh token has been revoked")
     }
 
-    const user = this.store.getUserByEmail(tokenPayload.email)
+    const user = await this.store.getUserByEmail(tokenPayload.email)
     if (!user) {
       throw new UnauthorizedException("User not found for refresh token")
     }
@@ -90,8 +90,8 @@ export class AuthService {
     return this.tokenService.verifyRefreshToken(token)
   }
 
-  validateUserCredentials(email: string, password: string): AuthIdentity | null {
-    const user = this.store.getUserByEmail(email)
+  async validateUserCredentials(email: string, password: string): Promise<AuthIdentity | null> {
+    const user = await this.store.getUserByEmail(email)
     if (!user) return null
     const validPassword = bcrypt.compareSync(password, user.passwordHash)
     if (!validPassword) return null

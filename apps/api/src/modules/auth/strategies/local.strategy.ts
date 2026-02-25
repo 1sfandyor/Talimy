@@ -13,17 +13,17 @@ export class LocalStrategy extends PassportStrategy(Strategy, "local") {
     })
   }
 
-  validate(
+  async validate(
     email: string,
     password: string
-  ): {
+  ): Promise<{
     id: string
     email: string
     tenantId: string
     roles: string[]
     genderScope: "male" | "female" | "all"
-  } {
-    const user = this.authService.validateUserCredentials(email, password)
+  }> {
+    const user = await this.authService.validateUserCredentials(email, password)
     if (!user) {
       throw new UnauthorizedException("Invalid credentials")
     }

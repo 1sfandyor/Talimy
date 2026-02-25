@@ -15,18 +15,18 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(200)
-  login(@Body(new ZodValidationPipe(loginSchema)) payload: unknown) {
+  async login(@Body(new ZodValidationPipe(loginSchema)) payload: unknown) {
     return this.authService.login(payload as LoginDto)
   }
 
   @Post("register")
-  register(@Body(new ZodValidationPipe(registerSchema)) payload: unknown) {
+  async register(@Body(new ZodValidationPipe(registerSchema)) payload: unknown) {
     return this.authService.register(payload as RegisterDto)
   }
 
   @Post("refresh")
   @HttpCode(200)
-  refresh(@Body(new ZodValidationPipe(refreshTokenSchema)) payload: unknown) {
+  async refresh(@Body(new ZodValidationPipe(refreshTokenSchema)) payload: unknown) {
     return this.authService.refresh(payload as RefreshTokenDto)
   }
 
