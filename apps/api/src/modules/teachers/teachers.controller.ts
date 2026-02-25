@@ -94,25 +94,28 @@ export class TeachersController {
   @UsePipes(new ZodValidationPipe(createTeacherSchema))
   async create(
     @CurrentUser() currentUser: CurrentUserType | null,
-    @Body() payload: CreateTeacherDto
+    // Zod pipe is the source of truth here; avoid duplicate global class-validator
+    // checks drifting from shared schema and blocking valid payloads.
+    @Body() payload: unknown
   ) {
+    const createPayload = payload as CreateTeacherDto
     if (currentUser && currentUser.roles?.includes("school_admin")) {
       await this.permifyPdpService.assertGenderAccess({
-        tenantId: payload.tenantId,
+        tenantId: createPayload.tenantId,
         userId: currentUser.id,
         roles: currentUser.roles ?? [],
         userGenderScope: currentUser.genderScope ?? "all",
         entity: "teacher",
         action: "create",
-        targetGender: payload.gender,
+        targetGender: createPayload.gender,
       })
     }
     if (currentUser?.genderScope && currentUser.genderScope !== "all") {
-      if (payload.gender !== currentUser.genderScope) {
+      if (createPayload.gender !== currentUser.genderScope) {
         throw new ForbiddenException("Gender scope mismatch")
       }
     }
-    return this.teachersService.create(payload)
+    return this.teachersService.create(createPayload)
   }
 
   @Patch(":id")
@@ -121,8 +124,9 @@ export class TeachersController {
     @CurrentUser() currentUser: CurrentUserType | null,
     @Query("tenantId") tenantId: string,
     @Param("id") id: string,
-    @Body() payload: UpdateTeacherDto
+    @Body() payload: unknown
   ) {
+    const updatePayload = payload as UpdateTeacherDto
     if (currentUser && currentUser.roles?.includes("school_admin")) {
       await this.permifyPdpService.assertGenderAccess({
         tenantId,
@@ -131,15 +135,15 @@ export class TeachersController {
         userGenderScope: currentUser.genderScope ?? "all",
         entity: "teacher",
         action: "update",
-        targetGender: payload.gender,
+        targetGender: updatePayload.gender,
       })
     }
-    if (currentUser?.genderScope && currentUser.genderScope !== "all" && payload.gender) {
-      if (payload.gender !== currentUser.genderScope) {
+    if (currentUser?.genderScope && currentUser.genderScope !== "all" && updatePayload.gender) {
+      if (updatePayload.gender !== currentUser.genderScope) {
         throw new ForbiddenException("Gender scope mismatch")
       }
     }
-    return this.teachersService.update(tenantId, id, payload)
+    return this.teachersService.update(tenantId, id, updatePayload)
   }
 
   @Delete(":id")
