@@ -8,20 +8,24 @@ import {
   Query,
   UnauthorizedException,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common"
 import {
   markNotificationReadSchema,
   notificationScopeQuerySchema,
   notificationsQuerySchema,
   sendNotificationSchema,
+  uuidStringSchema,
 } from "@talimy/shared"
 
-import { CurrentUser, type CurrentUser as CurrentUserPayload } from "@/common/decorators/current-user.decorator"
+import {
+  CurrentUser,
+  type CurrentUser as CurrentUserPayload,
+} from "@/common/decorators/current-user.decorator"
 import { Roles } from "@/common/decorators/roles.decorator"
 import { AuthGuard } from "@/common/guards/auth.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
 import { TenantGuard } from "@/common/guards/tenant.guard"
+import { ZodParamFieldPipe } from "@/common/pipes/zod-param-field.pipe"
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
 
 import {
@@ -39,36 +43,42 @@ export class NotificationsController {
 
   @Get()
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
-  @UsePipes(new ZodValidationPipe(notificationsQuerySchema))
-  list(@CurrentUser() user: CurrentUserPayload | null, @Query() query: NotificationsQueryDto) {
+  list(
+    @CurrentUser() user: CurrentUserPayload | null,
+    @Query(new ZodValidationPipe(notificationsQuerySchema)) queryInput: unknown
+  ) {
+    const query = queryInput as NotificationsQueryDto
     return this.notificationsService.list(this.requireUser(user), query)
   }
 
   @Get("unread-count")
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
-  @UsePipes(new ZodValidationPipe(notificationScopeQuerySchema))
   unreadCount(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Query() query: NotificationScopeQueryDto
+    @Query(new ZodValidationPipe(notificationScopeQuerySchema)) queryInput: unknown
   ) {
+    const query = queryInput as NotificationScopeQueryDto
     return this.notificationsService.getUnreadCount(this.requireUser(user), query)
   }
 
   @Post("send")
   @Roles("platform_admin", "school_admin", "teacher")
-  @UsePipes(new ZodValidationPipe(sendNotificationSchema))
-  send(@CurrentUser() user: CurrentUserPayload | null, @Body() body: SendNotificationDto) {
+  send(
+    @CurrentUser() user: CurrentUserPayload | null,
+    @Body(new ZodValidationPipe(sendNotificationSchema)) bodyInput: unknown
+  ) {
+    const body = bodyInput as SendNotificationDto
     return this.notificationsService.send(this.requireUser(user), body)
   }
 
   @Patch(":id/read")
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
-  @UsePipes(new ZodValidationPipe(markNotificationReadSchema))
   markRead(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Param("id") id: string,
-    @Body() body: MarkNotificationReadDto
+    @Param("id", new ZodParamFieldPipe(uuidStringSchema)) id: string,
+    @Body(new ZodValidationPipe(markNotificationReadSchema)) bodyInput: unknown
   ) {
+    const body = bodyInput as MarkNotificationReadDto
     return this.notificationsService.markRead(this.requireUser(user), id, body)
   }
 

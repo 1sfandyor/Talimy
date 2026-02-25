@@ -1,81 +1,35 @@
-import { Type } from "class-transformer"
+import { createZodDto } from "nestjs-zod"
 import {
-  IsArray,
-  IsIn,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from "class-validator"
+  markNotificationReadSchema,
+  notificationChannelSchema,
+  notificationScopeQuerySchema,
+  notificationsQuerySchema,
+  notificationTypeSchema,
+  sendNotificationSchema,
+  type MarkNotificationReadInput,
+  type NotificationScopeQueryInput,
+  type NotificationsQueryInput,
+  type SendNotificationInput,
+} from "@talimy/shared"
 
-import { PaginationDto } from "@/common/dto/pagination.dto"
+type ZodDtoClass = abstract new (...args: never[]) => object
 
-const NOTIFICATION_TYPES = ["info", "success", "warning", "error"] as const
-const NOTIFICATION_CHANNELS = ["in_app", "email", "sms"] as const
+const SendNotificationDtoBase = createZodDto(sendNotificationSchema) as ZodDtoClass
+const NotificationsQueryDtoBase = createZodDto(notificationsQuerySchema) as ZodDtoClass
+const NotificationScopeQueryDtoBase = createZodDto(notificationScopeQuerySchema) as ZodDtoClass
+const MarkNotificationReadDtoBase = createZodDto(markNotificationReadSchema) as ZodDtoClass
 
-export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
-export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
+export type NotificationType = (typeof notificationTypeSchema)["_type"]
+export type NotificationChannel = (typeof notificationChannelSchema)["_type"]
 
-export class SendNotificationDto {
-  @IsUUID()
-  tenantId!: string
+export class SendNotificationDto extends SendNotificationDtoBase {}
+export interface SendNotificationDto extends SendNotificationInput {}
 
-  @IsArray()
-  @IsUUID(undefined, { each: true })
-  recipientUserIds!: string[]
+export class NotificationsQueryDto extends NotificationsQueryDtoBase {}
+export interface NotificationsQueryDto extends NotificationsQueryInput {}
 
-  @IsString()
-  @MinLength(1)
-  @MaxLength(255)
-  title!: string
+export class NotificationScopeQueryDto extends NotificationScopeQueryDtoBase {}
+export interface NotificationScopeQueryDto extends NotificationScopeQueryInput {}
 
-  @IsString()
-  @MinLength(1)
-  @MaxLength(1000)
-  message!: string
-
-  @IsOptional()
-  @IsIn(NOTIFICATION_TYPES)
-  type?: NotificationType
-
-  @IsOptional()
-  @IsArray()
-  @IsIn(NOTIFICATION_CHANNELS, { each: true })
-  channels?: NotificationChannel[]
-}
-
-export class NotificationsQueryDto extends PaginationDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @IsUUID()
-  userId?: string
-
-  @IsOptional()
-  @IsIn(NOTIFICATION_TYPES)
-  type?: NotificationType
-
-  @IsOptional()
-  @IsIn(["true", "false"])
-  unreadOnly?: "true" | "false"
-}
-
-export class NotificationScopeQueryDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @IsUUID()
-  userId?: string
-}
-
-export class MarkNotificationReadDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @Type(() => Boolean)
-  read?: boolean = true
-}
+export class MarkNotificationReadDto extends MarkNotificationReadDtoBase {}
+export interface MarkNotificationReadDto extends MarkNotificationReadInput {}
