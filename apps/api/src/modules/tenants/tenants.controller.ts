@@ -8,7 +8,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common"
 import {
   createTenantSchema,
@@ -35,9 +34,8 @@ export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(listTenantsQuerySchema))
-  list(@Query() query: ListTenantsQueryDto) {
-    return this.tenantsService.list(query)
+  list(@Query(new ZodValidationPipe(listTenantsQuerySchema)) query: unknown) {
+    return this.tenantsService.list(query as ListTenantsQueryDto)
   }
 
   @Get(":id")
@@ -46,15 +44,13 @@ export class TenantsController {
   }
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createTenantSchema))
-  create(@Body() payload: CreateTenantDto) {
-    return this.tenantsService.create(payload)
+  create(@Body(new ZodValidationPipe(createTenantSchema)) payload: unknown) {
+    return this.tenantsService.create(payload as CreateTenantDto)
   }
 
   @Patch(":id")
-  @UsePipes(new ZodValidationPipe(updateTenantSchema))
-  update(@Param("id") id: string, @Body() payload: UpdateTenantDto) {
-    return this.tenantsService.update(id, payload)
+  update(@Param("id") id: string, @Body(new ZodValidationPipe(updateTenantSchema)) payload: unknown) {
+    return this.tenantsService.update(id, payload as UpdateTenantDto)
   }
 
   @Patch(":id/activate")
@@ -78,9 +74,11 @@ export class TenantsController {
   }
 
   @Patch(":id/billing")
-  @UsePipes(new ZodValidationPipe(updateTenantBillingSchema))
-  updateBilling(@Param("id") id: string, @Body() payload: UpdateTenantBillingDto) {
-    return this.tenantsService.updateBilling(id, payload)
+  updateBilling(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateTenantBillingSchema)) payload: unknown
+  ) {
+    return this.tenantsService.updateBilling(id, payload as UpdateTenantBillingDto)
   }
 
   @Delete(":id")

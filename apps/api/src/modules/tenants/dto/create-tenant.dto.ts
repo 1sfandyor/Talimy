@@ -1,44 +1,8 @@
-import { Type } from "class-transformer"
-import { IsIn, IsNumber, IsOptional, IsString, Max, Min, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { createTenantSchema, type CreateTenantInput } from "@talimy/shared"
 
-export class CreateTenantDto {
-  @IsString()
-  @MinLength(2)
-  name!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const CreateTenantDtoBase = createZodDto(createTenantSchema) as ZodDtoClass
 
-  @IsString()
-  @MinLength(2)
-  slug!: string
-
-  @IsIn(["boys_only", "girls_only", "mixed"])
-  genderPolicy!: "boys_only" | "girls_only" | "mixed"
-
-  @IsOptional()
-  @IsIn(["free", "basic", "pro", "enterprise"])
-  billingPlan?: "free" | "basic" | "pro" | "enterprise"
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @Max(100000)
-  studentLimit?: number
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @Max(10000)
-  adminLimit?: number
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  monthlyPrice?: number
-
-  @IsOptional()
-  @IsString()
-  @MinLength(3)
-  currency?: string
-}
+export class CreateTenantDto extends CreateTenantDtoBase {}
+export interface CreateTenantDto extends CreateTenantInput {}

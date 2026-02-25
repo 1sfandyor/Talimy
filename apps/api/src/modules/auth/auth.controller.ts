@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, UsePipes } from "@nestjs/common"
+import { Body, Controller, HttpCode, Post } from "@nestjs/common"
 import { loginSchema, logoutSchema, refreshTokenSchema, registerSchema } from "@talimy/shared"
 
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
@@ -15,28 +15,24 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(200)
-  @UsePipes(new ZodValidationPipe(loginSchema))
-  login(@Body() payload: LoginDto) {
-    return this.authService.login(payload)
+  login(@Body(new ZodValidationPipe(loginSchema)) payload: unknown) {
+    return this.authService.login(payload as LoginDto)
   }
 
   @Post("register")
-  @UsePipes(new ZodValidationPipe(registerSchema))
-  register(@Body() payload: RegisterDto) {
-    return this.authService.register(payload)
+  register(@Body(new ZodValidationPipe(registerSchema)) payload: unknown) {
+    return this.authService.register(payload as RegisterDto)
   }
 
   @Post("refresh")
   @HttpCode(200)
-  @UsePipes(new ZodValidationPipe(refreshTokenSchema))
-  refresh(@Body() payload: RefreshTokenDto) {
-    return this.authService.refresh(payload)
+  refresh(@Body(new ZodValidationPipe(refreshTokenSchema)) payload: unknown) {
+    return this.authService.refresh(payload as RefreshTokenDto)
   }
 
   @Post("logout")
   @HttpCode(200)
-  @UsePipes(new ZodValidationPipe(logoutSchema))
-  logout(@Body() payload?: LogoutDto) {
-    return this.authService.logout(payload)
+  logout(@Body(new ZodValidationPipe(logoutSchema)) payload?: unknown) {
+    return this.authService.logout(payload as LogoutDto | undefined)
   }
 }

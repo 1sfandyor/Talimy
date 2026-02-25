@@ -1,7 +1,8 @@
-import { IsString, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { refreshTokenSchema, type RefreshTokenInput } from "@talimy/shared"
 
-export class RefreshTokenDto {
-  @IsString()
-  @MinLength(10)
-  refreshToken!: string
-}
+type ZodDtoClass = abstract new (...args: never[]) => object
+const RefreshTokenDtoBase = createZodDto(refreshTokenSchema) as ZodDtoClass
+
+export class RefreshTokenDto extends RefreshTokenDtoBase {}
+export interface RefreshTokenDto extends RefreshTokenInput {}

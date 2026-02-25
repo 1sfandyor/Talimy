@@ -1,13 +1,8 @@
-import { IsIn, IsOptional } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { listTenantsQuerySchema, type ListTenantsQueryInput } from "@talimy/shared"
 
-import { PaginationDto } from "@/common/dto/pagination.dto"
+type ZodDtoClass = abstract new (...args: never[]) => object
+const ListTenantsQueryDtoBase = createZodDto(listTenantsQuerySchema) as ZodDtoClass
 
-export class ListTenantsQueryDto extends PaginationDto {
-  @IsOptional()
-  @IsIn(["active", "inactive", "suspended"])
-  status?: "active" | "inactive" | "suspended"
-
-  @IsOptional()
-  @IsIn(["free", "basic", "pro", "enterprise"])
-  billingPlan?: "free" | "basic" | "pro" | "enterprise"
-}
+export class ListTenantsQueryDto extends ListTenantsQueryDtoBase {}
+export interface ListTenantsQueryDto extends ListTenantsQueryInput {}

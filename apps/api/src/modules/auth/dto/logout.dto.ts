@@ -1,8 +1,8 @@
-import { IsOptional, IsString, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { logoutSchema, type LogoutInput } from "@talimy/shared"
 
-export class LogoutDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(10)
-  refreshToken?: string
-}
+type ZodDtoClass = abstract new (...args: never[]) => object
+const LogoutDtoBase = createZodDto(logoutSchema) as ZodDtoClass
+
+export class LogoutDto extends LogoutDtoBase {}
+export interface LogoutDto extends LogoutInput {}

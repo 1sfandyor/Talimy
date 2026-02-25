@@ -1,18 +1,8 @@
-import { IsEmail, IsString, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { registerSchema, type RegisterInput } from "@talimy/shared"
 
-export class RegisterDto {
-  @IsString()
-  @MinLength(2)
-  fullName!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const RegisterDtoBase = createZodDto(registerSchema) as ZodDtoClass
 
-  @IsEmail()
-  email!: string
-
-  @IsString()
-  @MinLength(8)
-  password!: string
-
-  @IsString()
-  @MinLength(2)
-  tenantId!: string
-}
+export class RegisterDto extends RegisterDtoBase {}
+export interface RegisterDto extends RegisterInput {}
