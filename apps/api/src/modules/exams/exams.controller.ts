@@ -24,7 +24,7 @@ import { ExamsService } from "./exams.service"
 @Roles("platform_admin", "school_admin", "teacher")
 export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
-  private static readonly idParamSchema = z.object({ id: z.string().uuid() })
+  private static readonly idValueSchema = z.string().uuid()
 
   @Get()
   list(@Query(new ZodValidationPipe(examQuerySchema)) queryInput: unknown) {
@@ -61,12 +61,12 @@ export class ExamsController {
 
   @Get(":id")
   getById(
-    @Param(new ZodValidationPipe(ExamsController.idParamSchema)) paramsInput: unknown,
+    @Param("id") idInput: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
-    const params = paramsInput as { id: string }
+    const id = ExamsController.idValueSchema.parse(idInput)
     const query = queryInput as { tenantId: string }
-    return this.examsService.getById(query.tenantId, params.id)
+    return this.examsService.getById(query.tenantId, id)
   }
 
   @Post()
