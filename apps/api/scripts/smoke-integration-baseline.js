@@ -242,7 +242,9 @@ async function main() {
         "Notifications list after send expected 200",
         pretty(listAfterResp)
       )
-      const rows = listAfterResp.json?.data ?? []
+      const rows = Array.isArray(listAfterResp.json?.data)
+        ? listAfterResp.json.data
+        : (listAfterResp.json?.data?.data ?? [])
       const target = Array.isArray(rows)
         ? rows.find(
             (row) =>
