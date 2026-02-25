@@ -31,6 +31,14 @@ function pretty(resp) {
   }
 }
 
+function extractRows(envelope) {
+  const data = envelope?.data
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.data)) return data.data
+  if (data && Array.isArray(data.items)) return data.items
+  return []
+}
+
 function markOk(test, detail = "") {
   test.ok = true
   test.detail = detail
@@ -73,6 +81,7 @@ async function main() {
   let token = ""
   let createdNoticeId = ""
   let currentUserId = ""
+  let discoveredExamId = ""
 
   // Health
   {
@@ -122,6 +131,215 @@ async function main() {
 
   const authHeader = () => ({ Authorization: `Bearer ${token}` })
 
+  // Auth login/refresh/logout
+  {
+    const t = pushCase(createCase("auth-login-refresh-logout"))
+    try {
+      assertOrThrow(token, "Missing auth token from register")
+      const email = `integration-login+${Date.now()}@mezana.talimy.space`
+      const registerResp = await httpJson(`${baseUrl}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: "Integration Login Smoke",
+          email,
+          password: smokePassword,
+          tenantId,
+        }),
+      })
+      assertOrThrow(
+        registerResp.status === 201,
+        "Second register expected 201",
+        pretty(registerResp)
+      )
+
+      const loginResp = await httpJson(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: smokePassword }),
+      })
+      assertOrThrow(loginResp.status === 200, "Login expected 200", pretty(loginResp))
+      const accessToken = loginResp.json?.data?.accessToken
+      const refreshToken = loginResp.json?.data?.refreshToken
+      assertOrThrow(accessToken && refreshToken, "Missing auth tokens", pretty(loginResp))
+
+      const refreshResp = await httpJson(`${baseUrl}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      })
+      assertOrThrow(refreshResp.status === 200, "Refresh expected 200", pretty(refreshResp))
+
+      const logoutResp = await httpJson(`${baseUrl}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      })
+      assertOrThrow(logoutResp.status === 200, "Logout expected 200", pretty(logoutResp))
+
+      markOk(t, "POST login/refresh/logout -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Users list
+  {
+    const t = pushCase(createCase("users-list"))
+    try {
+      const resp = await httpJson(
+        `${baseUrl}/api/users?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(resp.status === 200, "Users list expected 200", pretty(resp))
+      markOk(t, "GET /api/users -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Teachers list
+  {
+    const t = pushCase(createCase("teachers-list"))
+    try {
+      const resp = await httpJson(
+        `${baseUrl}/api/teachers?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(resp.status === 200, "Teachers list expected 200", pretty(resp))
+      markOk(t, "GET /api/teachers -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Students list + invalid date range query
+  {
+    const t = pushCase(createCase("students-list"))
+    try {
+      const listResp = await httpJson(
+        `${baseUrl}/api/students?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(listResp.status === 200, "Students list expected 200", pretty(listResp))
+
+      const invalidResp = await httpJson(
+        `${baseUrl}/api/students?tenantId=${encodeURIComponent(tenantId)}&enrollmentDateFrom=2026-12-31&enrollmentDateTo=2026-01-01`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        invalidResp.status === 400,
+        "Students invalid range expected 400",
+        pretty(invalidResp)
+      )
+      markOk(t, "GET /api/students + invalid enrollment range -> 200/400")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Parents list
+  {
+    const t = pushCase(createCase("parents-list"))
+    try {
+      const resp = await httpJson(
+        `${baseUrl}/api/parents?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(resp.status === 200, "Parents list expected 200", pretty(resp))
+      markOk(t, "GET /api/parents -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Classes list
+  {
+    const t = pushCase(createCase("classes-list"))
+    try {
+      const resp = await httpJson(
+        `${baseUrl}/api/classes?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(resp.status === 200, "Classes list expected 200", pretty(resp))
+      markOk(t, "GET /api/classes -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Attendance (invalid mark + report)
+  {
+    const t = pushCase(createCase("attendance-runtime"))
+    try {
+      const invalidMarkResp = await httpJson(`${baseUrl}/api/attendance/mark`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, records: [] }),
+      })
+      assertOrThrow(
+        invalidMarkResp.status === 400,
+        "Attendance invalid mark expected 400",
+        pretty(invalidMarkResp)
+      )
+
+      const reportResp = await httpJson(
+        `${baseUrl}/api/attendance/report?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(reportResp.status === 200, "Attendance report expected 200", pretty(reportResp))
+      markOk(t, "POST /attendance/mark invalid + GET /attendance/report -> 400/200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Grades (list/report/scales + invalid scale)
+  {
+    const t = pushCase(createCase("grades-runtime"))
+    try {
+      const listResp = await httpJson(
+        `${baseUrl}/api/grades?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(listResp.status === 200, "Grades list expected 200", pretty(listResp))
+
+      const reportResp = await httpJson(
+        `${baseUrl}/api/grades/report?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(reportResp.status === 200, "Grades report expected 200", pretty(reportResp))
+
+      const scalesResp = await httpJson(
+        `${baseUrl}/api/grades/scales?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(scalesResp.status === 200, "Grade scales list expected 200", pretty(scalesResp))
+
+      const invalidScaleResp = await httpJson(`${baseUrl}/api/grades/scales`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          name: "bad-scale",
+          minScore: 90,
+          maxScore: 80,
+          grade: "A",
+          gpa: 4,
+        }),
+      })
+      assertOrThrow(
+        invalidScaleResp.status === 400 || invalidScaleResp.status === 422,
+        "Invalid grade scale expected 400/422",
+        pretty(invalidScaleResp)
+      )
+
+      markOk(t, "GET grades/report/scales + invalid scale -> 200/200/200/400")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
   // Exams list + getById
   {
     const t = pushCase(createCase("exams-list-get"))
@@ -132,10 +350,11 @@ async function main() {
         { headers: authHeader() }
       )
       assertOrThrow(listResp.status === 200, "Exams list expected 200", pretty(listResp))
-      const examId = listResp.json?.data?.data?.[0]?.id
+      const examId = extractRows(listResp.json)?.[0]?.id
       if (!examId) {
         markSkip(t, "No exam row available in tenant")
       } else {
+        discoveredExamId = examId
         const getResp = await httpJson(
           `${baseUrl}/api/exams/${examId}?tenantId=${encodeURIComponent(tenantId)}`,
           { headers: authHeader() }
@@ -143,6 +362,133 @@ async function main() {
         assertOrThrow(getResp.status === 200, "Exams getById expected 200", pretty(getResp))
         markOk(t, "GET /api/exams + /:id -> 200")
       }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Exams results/stats + invalid query/payload validation
+  {
+    const t = pushCase(createCase("exams-runtime"))
+    try {
+      const invalidRangeResp = await httpJson(
+        `${baseUrl}/api/exams?tenantId=${encodeURIComponent(tenantId)}&dateFrom=2026-12-31&dateTo=2026-01-01`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        invalidRangeResp.status === 400,
+        "Exams invalid date range expected 400",
+        pretty(invalidRangeResp)
+      )
+
+      const invalidCreateResp = await httpJson(`${baseUrl}/api/exams`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, type: "bad" }),
+      })
+      assertOrThrow(
+        invalidCreateResp.status === 400 || invalidCreateResp.status === 422,
+        "Exams invalid payload expected 400/422",
+        pretty(invalidCreateResp)
+      )
+
+      if (!discoveredExamId) {
+        markSkip(t, "No exam row available for results/stats checks")
+      } else {
+        const resultsResp = await httpJson(
+          `${baseUrl}/api/exams/${discoveredExamId}/results?tenantId=${encodeURIComponent(tenantId)}`,
+          { headers: authHeader() }
+        )
+        assertOrThrow(resultsResp.status === 200, "Exam results expected 200", pretty(resultsResp))
+        const statsResp = await httpJson(
+          `${baseUrl}/api/exams/${discoveredExamId}/stats?tenantId=${encodeURIComponent(tenantId)}`,
+          { headers: authHeader() }
+        )
+        assertOrThrow(statsResp.status === 200, "Exam stats expected 200", pretty(statsResp))
+        markOk(t, "Exams invalid checks + results/stats -> 400/200/200")
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Assignments (list/stats + invalid date range)
+  {
+    const t = pushCase(createCase("assignments-runtime"))
+    try {
+      const listResp = await httpJson(
+        `${baseUrl}/api/assignments?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(listResp.status === 200, "Assignments list expected 200", pretty(listResp))
+      const statsResp = await httpJson(
+        `${baseUrl}/api/assignments/stats?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(statsResp.status === 200, "Assignments stats expected 200", pretty(statsResp))
+      const invalidResp = await httpJson(
+        `${baseUrl}/api/assignments?tenantId=${encodeURIComponent(tenantId)}&dueDateFrom=2026-12-31&dueDateTo=2026-01-01`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        invalidResp.status === 400,
+        "Assignments invalid date range expected 400",
+        pretty(invalidResp)
+      )
+      markOk(t, "GET assignments + stats + invalid range -> 200/200/400")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Schedule (list + day filter)
+  {
+    const t = pushCase(createCase("schedule-runtime"))
+    try {
+      const listResp = await httpJson(
+        `${baseUrl}/api/schedule?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(listResp.status === 200, "Schedule list expected 200", pretty(listResp))
+      const dayResp = await httpJson(
+        `${baseUrl}/api/schedule?tenantId=${encodeURIComponent(tenantId)}&dayOfWeek=monday&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(dayResp.status === 200, "Schedule day filter expected 200", pretty(dayResp))
+      markOk(t, "GET /api/schedule + day filter -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Finance (overview/summary/fee-structures)
+  {
+    const t = pushCase(createCase("finance-runtime"))
+    try {
+      const overviewResp = await httpJson(
+        `${baseUrl}/api/finance/overview?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        overviewResp.status === 200,
+        "Finance overview expected 200",
+        pretty(overviewResp)
+      )
+      const summaryResp = await httpJson(
+        `${baseUrl}/api/finance/payments/summary?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        summaryResp.status === 200,
+        "Payments summary expected 200",
+        pretty(summaryResp)
+      )
+      const feeResp = await httpJson(
+        `${baseUrl}/api/finance/fee-structures?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(feeResp.status === 200, "Fee structures list expected 200", pretty(feeResp))
+      markOk(t, "GET finance overview/summary/fee-structures -> 200")
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
