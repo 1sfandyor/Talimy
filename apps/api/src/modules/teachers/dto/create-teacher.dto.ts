@@ -1,12 +1,12 @@
 import { Type } from "class-transformer"
 import {
-  IsDateString,
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   MinLength,
+  Matches,
 } from "class-validator"
 
 export class CreateTeacherDto {
@@ -23,11 +23,11 @@ export class CreateTeacherDto {
   @IsIn(["male", "female"])
   gender!: "male" | "female"
 
-  @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "joinDate must be YYYY-MM-DD" })
   joinDate!: string
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "dateOfBirth must be YYYY-MM-DD" })
   dateOfBirth?: string
 
   @IsOptional()
