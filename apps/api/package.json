@@ -8,6 +8,7 @@
     "lint": "bunx eslint .",
     "lint:fix": "bunx eslint . --fix",
     "typecheck": "tsc --noEmit",
+    "permify:schema:publish": "node scripts/permify-publish-gender-schema.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js"
