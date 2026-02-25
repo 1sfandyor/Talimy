@@ -79,9 +79,6 @@ export class CreateGradeScaleDto {
 }
 
 export class UpdateGradeScaleDto {
-  @IsUUID()
-  tenantId!: string
-
   @IsOptional()
   @IsString()
   @MaxLength(100)

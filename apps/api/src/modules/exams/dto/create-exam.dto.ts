@@ -45,9 +45,6 @@ export class CreateExamDto {
 }
 
 export class UpdateExamDto {
-  @IsUUID()
-  tenantId!: string
-
   @IsOptional()
   @IsString()
   @MaxLength(150)

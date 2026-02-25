@@ -15,8 +15,8 @@ export const examQuerySchema = z
     studentId: z.string().uuid().optional(),
     examId: z.string().uuid().optional(),
     type: examTypeSchema.optional(),
-    dateFrom: z.string().optional(),
-    dateTo: z.string().optional(),
+    dateFrom: z.string().date().optional(),
+    dateTo: z.string().date().optional(),
   })
   .refine(
     (data) =>
@@ -42,7 +42,6 @@ export const createExamSchema = z.object({
 
 export const updateExamSchema = z
   .object({
-    tenantId: z.string().uuid(),
     name: z.string().min(1).max(150).optional(),
     type: examTypeSchema.optional(),
     subjectId: z.string().uuid().optional(),
@@ -51,12 +50,11 @@ export const updateExamSchema = z
     totalMarks: z.number().int().min(1).optional(),
     duration: z.number().int().min(1).optional(),
   })
-  .refine((data) => Object.keys(data).some((key) => key !== "tenantId"), {
+  .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",
   })
 
 export const enterExamResultsSchema = z.object({
-  tenantId: z.string().uuid(),
   records: z
     .array(
       z.object({

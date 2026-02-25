@@ -29,9 +29,6 @@ class ExamResultRecordDto {
 }
 
 export class EnterExamResultsDto {
-  @IsUUID()
-  tenantId!: string
-
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ExamResultRecordDto)

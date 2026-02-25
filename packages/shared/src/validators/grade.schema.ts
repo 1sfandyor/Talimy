@@ -48,7 +48,6 @@ export const createGradeScaleSchema = z
 
 export const updateGradeScaleSchema = z
   .object({
-    tenantId: z.string().uuid(),
     name: z.string().min(1).max(100).optional(),
     minScore: z.number().min(0).max(100).optional(),
     maxScore: z.number().min(0).max(100).optional(),

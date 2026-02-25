@@ -49,19 +49,17 @@ export class GradesController {
   @Get("student/:studentId")
   byStudent(
     @Param("studentId") studentId: string,
-    @Query("tenantId") tenantId: string,
     @Query(new ZodValidationPipe(gradeQuerySchema)) query: GradeQueryDto
   ) {
-    return this.gradesService.getByStudent(tenantId, studentId, query)
+    return this.gradesService.getByStudent(query.tenantId, studentId, query)
   }
 
   @Get("class/:classId")
   byClass(
     @Param("classId") classId: string,
-    @Query("tenantId") tenantId: string,
     @Query(new ZodValidationPipe(gradeQuerySchema)) query: GradeQueryDto
   ) {
-    return this.gradesService.getByClass(tenantId, classId, query)
+    return this.gradesService.getByClass(query.tenantId, classId, query)
   }
 
   @Get("report")
