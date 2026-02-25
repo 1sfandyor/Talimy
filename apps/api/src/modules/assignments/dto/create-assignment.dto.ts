@@ -47,9 +47,6 @@ export class CreateAssignmentDto {
 }
 
 export class UpdateAssignmentDto {
-  @IsUUID()
-  tenantId!: string
-
   @IsOptional()
   @IsUUID()
   teacherId?: string

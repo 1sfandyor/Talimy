@@ -7,8 +7,8 @@ import type { SubmitAssignmentDto } from "./dto/submit-assignment.dto"
 import type { AssignmentsRepository } from "./assignments.repository"
 
 test("AssignmentsService.submit delegates to repository", async () => {
+  const tenantId = "11111111-1111-1111-1111-111111111111"
   const payload: SubmitAssignmentDto = {
-    tenantId: "11111111-1111-1111-1111-111111111111",
     studentId: "22222222-2222-2222-2222-222222222222",
     fileUrl: "https://files.talimy.space/submissions/demo.pdf",
   }
@@ -33,10 +33,10 @@ test("AssignmentsService.submit delegates to repository", async () => {
   } as unknown as AssignmentSubmissionFilesService
 
   const service = new AssignmentsService(repository, fileService)
-  const result = service.submit(payload.tenantId, "assignment-id", payload)
+  const result = service.submit(tenantId, "assignment-id", payload)
 
   assert.deepEqual(captured, {
-    tenantId: payload.tenantId,
+    tenantId,
     assignmentId: "assignment-id",
     payload,
   })
@@ -44,8 +44,8 @@ test("AssignmentsService.submit delegates to repository", async () => {
 })
 
 test("AssignmentsService.submitWithUploadedFile stores file and delegates to repository with generated fileUrl", async () => {
+  const tenantId = "11111111-1111-1111-1111-111111111111"
   const payload: SubmitAssignmentDto = {
-    tenantId: "11111111-1111-1111-1111-111111111111",
     studentId: "22222222-2222-2222-2222-222222222222",
   }
   const uploadedFile = {
@@ -83,10 +83,10 @@ test("AssignmentsService.submitWithUploadedFile stores file and delegates to rep
   } as unknown as AssignmentSubmissionFilesService
 
   const service = new AssignmentsService(repository, fileService)
-  const result = await service.submitWithUploadedFile(payload.tenantId, "assignment-id", payload, uploadedFile)
+  const result = await service.submitWithUploadedFile(tenantId, "assignment-id", payload, uploadedFile)
 
   assert.deepEqual(savedInput, {
-    tenantId: payload.tenantId,
+    tenantId,
     assignmentId: "assignment-id",
     studentId: payload.studentId,
     file: uploadedFile,

@@ -3,9 +3,6 @@ import { IsNumber, IsOptional, IsString, IsUrl, IsUUID, MaxLength, Min } from "c
 
 export class SubmitAssignmentDto {
   @IsUUID()
-  tenantId!: string
-
-  @IsUUID()
   studentId!: string
 
   @IsString()
@@ -16,9 +13,6 @@ export class SubmitAssignmentDto {
 }
 
 export class GradeAssignmentSubmissionDto {
-  @IsUUID()
-  tenantId!: string
-
   @Type(() => Number)
   @IsNumber()
   @Min(0)

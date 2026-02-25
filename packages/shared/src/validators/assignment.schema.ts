@@ -12,8 +12,8 @@ export const assignmentQuerySchema = z
     subjectId: z.string().uuid().optional(),
     teacherId: z.string().uuid().optional(),
     studentId: z.string().uuid().optional(),
-    dueDateFrom: z.string().optional(),
-    dueDateTo: z.string().optional(),
+    dueDateFrom: z.string().date().optional(),
+    dueDateTo: z.string().date().optional(),
   })
   .refine(
     (data) =>
@@ -40,7 +40,6 @@ export const createAssignmentSchema = z.object({
 
 export const updateAssignmentSchema = z
   .object({
-    tenantId: z.string().uuid(),
     teacherId: z.string().uuid().optional(),
     subjectId: z.string().uuid().optional(),
     classId: z.string().uuid().optional(),
@@ -50,18 +49,16 @@ export const updateAssignmentSchema = z
     totalPoints: z.number().int().min(1).max(1000).optional(),
     fileUrl: z.string().url().max(500).nullable().optional(),
   })
-  .refine((data) => Object.keys(data).some((key) => key !== "tenantId"), {
+  .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",
   })
 
 export const submitAssignmentSchema = z.object({
-  tenantId: z.string().uuid(),
   studentId: z.string().uuid(),
   fileUrl: z.string().url().max(500).optional(),
 })
 
 export const gradeAssignmentSubmissionSchema = z.object({
-  tenantId: z.string().uuid(),
   score: z.number().min(0),
   feedback: z.string().max(5000).optional(),
 })

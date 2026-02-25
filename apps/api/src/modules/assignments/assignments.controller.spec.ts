@@ -8,10 +8,10 @@ import type { AssignmentsService } from "./assignments.service"
 import type { SubmitAssignmentDto } from "./dto/submit-assignment.dto"
 
 const baseSubmitPayload: SubmitAssignmentDto = {
-  tenantId: "11111111-1111-1111-1111-111111111111",
   studentId: "22222222-2222-2222-2222-222222222222",
   fileUrl: "https://files.talimy.space/submissions/demo.pdf",
 }
+const tenantId = "11111111-1111-1111-1111-111111111111"
 
 test("AssignmentsController.submit requires fileUrl or multipart file", async () => {
   const service = {
@@ -23,7 +23,7 @@ test("AssignmentsController.submit requires fileUrl or multipart file", async ()
     () =>
       controller.submit(
         "assignment-id",
-        baseSubmitPayload.tenantId,
+        tenantId,
         { ...baseSubmitPayload, fileUrl: undefined },
         undefined
       ),
@@ -59,13 +59,13 @@ test("AssignmentsController.submit delegates multipart-only submit to upload han
 
   const result = controller.submit(
     "assignment-id",
-    baseSubmitPayload.tenantId,
+    tenantId,
     { ...baseSubmitPayload, fileUrl: undefined },
     { originalname: "homework.pdf", buffer: Buffer.from("demo") }
   )
 
   assert.deepEqual(captured, {
-    tenantId: baseSubmitPayload.tenantId,
+    tenantId,
     assignmentId: "assignment-id",
     payload: { ...baseSubmitPayload, fileUrl: undefined },
     file: { originalname: "homework.pdf", buffer: Buffer.from("demo") },
@@ -90,10 +90,10 @@ test("AssignmentsController.submit delegates to service when fileUrl is provided
   } as unknown as AssignmentsService
 
   const controller = new AssignmentsController(service)
-  const result = controller.submit("assignment-id", baseSubmitPayload.tenantId, baseSubmitPayload, undefined)
+  const result = controller.submit("assignment-id", tenantId, baseSubmitPayload, undefined)
 
   assert.deepEqual(captured, {
-    tenantId: baseSubmitPayload.tenantId,
+    tenantId,
     assignmentId: "assignment-id",
     payload: baseSubmitPayload,
   })
