@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -16,6 +15,7 @@ import {
   examQuerySchema,
   updateExamSchema,
   userTenantQuerySchema,
+  uuidStringSchema,
 } from "@talimy/shared"
 
 import { Roles } from "@/common/decorators/roles.decorator"
@@ -23,6 +23,7 @@ import { AuthGuard } from "@/common/guards/auth.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
 import { TenantGuard } from "@/common/guards/tenant.guard"
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
+import { ZodParamFieldPipe } from "@/common/pipes/zod-param-field.pipe"
 
 import { CreateExamDto, UpdateExamDto } from "./dto/create-exam.dto"
 import { EnterExamResultsDto } from "./dto/exam-result.dto"
@@ -70,7 +71,7 @@ export class ExamsController {
 
   @Get(":id")
   getById(
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new ZodParamFieldPipe(uuidStringSchema)) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
     const query = queryInput as { tenantId: string }

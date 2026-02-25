@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -16,6 +15,7 @@ import {
   noticesQuerySchema,
   updateNoticeSchema,
   userTenantQuerySchema,
+  uuidStringSchema,
 } from "@talimy/shared"
 
 import {
@@ -27,6 +27,7 @@ import { AuthGuard } from "@/common/guards/auth.guard"
 import { RolesGuard } from "@/common/guards/roles.guard"
 import { TenantGuard } from "@/common/guards/tenant.guard"
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe"
+import { ZodParamFieldPipe } from "@/common/pipes/zod-param-field.pipe"
 
 import { CreateNoticeDto, UpdateNoticeDto } from "./dto/create-notice.dto"
 import { NoticeQueryDto } from "./dto/notice-query.dto"
@@ -51,7 +52,7 @@ export class NoticesController {
   @Roles("platform_admin", "school_admin", "teacher", "student", "parent")
   getById(
     @CurrentUser() user: CurrentUserPayload | null,
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new ZodParamFieldPipe(uuidStringSchema)) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
     const query = queryInput as { tenantId: string }
@@ -71,7 +72,7 @@ export class NoticesController {
   @Patch(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   update(
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new ZodParamFieldPipe(uuidStringSchema)) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
     @Body(new ZodValidationPipe(updateNoticeSchema)) payloadInput: unknown
   ) {
@@ -83,7 +84,7 @@ export class NoticesController {
   @Delete(":id")
   @Roles("platform_admin", "school_admin", "teacher")
   delete(
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new ZodParamFieldPipe(uuidStringSchema)) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
     const query = queryInput as { tenantId: string }
