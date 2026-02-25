@@ -1,54 +1,18 @@
-import { IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import {
+  createPaymentSchema,
+  type CreatePaymentInput,
+  type UpdatePaymentInput,
+  updatePaymentSchema,
+} from "@talimy/shared"
 
-export class CreatePaymentDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
 
-  @IsUUID()
-  studentId!: string
+const CreatePaymentDtoBase = createZodDto(createPaymentSchema) as ZodDtoClass
+const UpdatePaymentDtoBase = createZodDto(updatePaymentSchema) as ZodDtoClass
 
-  @IsNumber()
-  @Min(0)
-  amount!: number
+export class CreatePaymentDto extends CreatePaymentDtoBase {}
+export interface CreatePaymentDto extends CreatePaymentInput {}
 
-  @IsString()
-  @MaxLength(50)
-  method!: string
-
-  @IsOptional()
-  @IsIn(["pending", "paid", "overdue", "failed"])
-  status?: "pending" | "paid" | "overdue" | "failed"
-
-  @IsDateString()
-  date!: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  receiptNumber?: string
-}
-
-export class UpdatePaymentDto {
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  amount?: number
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  method?: string
-
-  @IsOptional()
-  @IsIn(["pending", "paid", "overdue", "failed"])
-  status?: "pending" | "paid" | "overdue" | "failed"
-
-  @IsOptional()
-  @IsDateString()
-  date?: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  receiptNumber?: string | null
-}
+export class UpdatePaymentDto extends UpdatePaymentDtoBase {}
+export interface UpdatePaymentDto extends UpdatePaymentInput {}

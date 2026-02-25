@@ -1,44 +1,18 @@
-import { IsDateString, IsNumber, IsOptional, IsUUID, Min } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import {
+  createPaymentPlanSchema,
+  type CreatePaymentPlanInput,
+  type UpdatePaymentPlanInput,
+  updatePaymentPlanSchema,
+} from "@talimy/shared"
 
-export class CreatePaymentPlanDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
 
-  @IsUUID()
-  studentId!: string
+const CreatePaymentPlanDtoBase = createZodDto(createPaymentPlanSchema) as ZodDtoClass
+const UpdatePaymentPlanDtoBase = createZodDto(updatePaymentPlanSchema) as ZodDtoClass
 
-  @IsUUID()
-  feeStructureId!: string
+export class CreatePaymentPlanDto extends CreatePaymentPlanDtoBase {}
+export interface CreatePaymentPlanDto extends CreatePaymentPlanInput {}
 
-  @IsNumber()
-  @Min(0)
-  totalAmount!: number
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  paidAmount?: number
-
-  @IsDateString()
-  dueDate!: string
-}
-
-export class UpdatePaymentPlanDto {
-  @IsOptional()
-  @IsUUID()
-  feeStructureId?: string
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalAmount?: number
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  paidAmount?: number
-
-  @IsOptional()
-  @IsDateString()
-  dueDate?: string
-}
+export class UpdatePaymentPlanDto extends UpdatePaymentPlanDtoBase {}
+export interface UpdatePaymentPlanDto extends UpdatePaymentPlanInput {}

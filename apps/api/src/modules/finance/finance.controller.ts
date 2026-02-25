@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards, UsePipes } from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 import {
   createFeeStructureSchema,
   createInvoiceSchema,
@@ -9,6 +9,7 @@ import {
   updatePaymentSchema,
   userTenantQuerySchema,
 } from "@talimy/shared"
+import { z } from "zod"
 
 import { Roles } from "@/common/decorators/roles.decorator"
 import { AuthGuard } from "@/common/guards/auth.guard"
@@ -29,112 +30,131 @@ export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
   @Get("overview")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getOverview(@Query() query: { tenantId: string }) {
+  getOverview(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.getOverview(query.tenantId)
   }
 
   @Get("payments/summary")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getPaymentsSummary(@Query() query: { tenantId: string }) {
+  getPaymentsSummary(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.getPaymentsSummary(query.tenantId)
   }
 
   @Get("fee-structures")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  listFeeStructures(@Query() query: { tenantId: string }) {
+  listFeeStructures(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.listFeeStructures(query.tenantId)
   }
 
   @Get("fee-structures/:id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getFeeStructureById(@Query() query: { tenantId: string }, @Param("id") id: string) {
+  getFeeStructureById(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string
+  ) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.getFeeStructureById(query.tenantId, id)
   }
 
   @Post("fee-structures")
   @Roles("platform_admin", "school_admin")
-  createFeeStructure(@Body(new ZodValidationPipe(createFeeStructureSchema)) payload: CreateFeeStructureDto) {
+  createFeeStructure(@Body(new ZodValidationPipe(createFeeStructureSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateFeeStructureDto
     return this.financeService.createFeeStructure(payload)
   }
 
   @Patch("fee-structures/:id")
   @Roles("platform_admin", "school_admin")
   updateFeeStructure(
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
-    @Param("id") id: string,
-    @Body(new ZodValidationPipe(updateFeeStructureSchema)) payload: UpdateFeeStructureDto
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Body(new ZodValidationPipe(updateFeeStructureSchema)) payloadInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdateFeeStructureDto
     return this.financeService.updateFeeStructure(query.tenantId, id, payload)
   }
 
   @Delete("fee-structures/:id")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  deleteFeeStructure(@Query() query: { tenantId: string }, @Param("id") id: string) {
+  deleteFeeStructure(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string
+  ) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.deleteFeeStructure(query.tenantId, id)
   }
 
   @Get("payment-plans")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  listPaymentPlans(@Query() query: { tenantId: string }) {
+  listPaymentPlans(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.listPaymentPlans(query.tenantId)
   }
 
   @Post("payment-plans")
   @Roles("platform_admin", "school_admin")
-  createPaymentPlan(@Body(new ZodValidationPipe(createPaymentPlanSchema)) payload: CreatePaymentPlanDto) {
+  createPaymentPlan(@Body(new ZodValidationPipe(createPaymentPlanSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreatePaymentPlanDto
     return this.financeService.createPaymentPlan(payload)
   }
 
   @Patch("payment-plans/:id")
   @Roles("platform_admin", "school_admin")
   updatePaymentPlan(
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
-    @Param("id") id: string,
-    @Body(new ZodValidationPipe(updatePaymentPlanSchema)) payload: UpdatePaymentPlanDto
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Body(new ZodValidationPipe(updatePaymentPlanSchema)) payloadInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdatePaymentPlanDto
     return this.financeService.updatePaymentPlan(query.tenantId, id, payload)
   }
 
   @Delete("payment-plans/:id")
   @Roles("platform_admin", "school_admin")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  deletePaymentPlan(@Query() query: { tenantId: string }, @Param("id") id: string) {
+  deletePaymentPlan(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string
+  ) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.deletePaymentPlan(query.tenantId, id)
   }
 
   @Get("payments")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  listPayments(@Query() query: { tenantId: string }) {
+  listPayments(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.listPayments(query.tenantId)
   }
 
   @Post("payments")
   @Roles("platform_admin", "school_admin")
-  createPayment(@Body(new ZodValidationPipe(createPaymentSchema)) payload: CreatePaymentDto) {
+  createPayment(@Body(new ZodValidationPipe(createPaymentSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreatePaymentDto
     return this.financeService.createPayment(payload)
   }
 
   @Patch("payments/:id")
   @Roles("platform_admin", "school_admin")
   updatePayment(
-    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: { tenantId: string },
-    @Param("id") id: string,
-    @Body(new ZodValidationPipe(updatePaymentSchema)) payload: UpdatePaymentDto
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
+    @Body(new ZodValidationPipe(updatePaymentSchema)) payloadInput: unknown
   ) {
+    const query = queryInput as { tenantId: string }
+    const payload = payloadInput as UpdatePaymentDto
     return this.financeService.updatePayment(query.tenantId, id, payload)
   }
 
   @Get("invoices")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  listInvoices(@Query() query: { tenantId: string }) {
+  listInvoices(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
+    const query = queryInput as { tenantId: string }
     return this.financeService.listInvoices(query.tenantId)
   }
 
   @Post("invoices")
   @Roles("platform_admin", "school_admin")
-  createInvoice(@Body(new ZodValidationPipe(createInvoiceSchema)) payload: CreateInvoiceDto) {
+  createInvoice(@Body(new ZodValidationPipe(createInvoiceSchema)) payloadInput: unknown) {
+    const payload = payloadInput as CreateInvoiceDto
     return this.financeService.createInvoice(payload)
   }
 }

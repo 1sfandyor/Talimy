@@ -1,52 +1,18 @@
-import { IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import {
+  createFeeStructureSchema,
+  type CreateFeeStructureInput,
+  type UpdateFeeStructureInput,
+  updateFeeStructureSchema,
+} from "@talimy/shared"
 
-export class CreateFeeStructureDto {
-  @IsUUID()
-  tenantId!: string
+type ZodDtoClass = abstract new (...args: never[]) => object
 
-  @IsString()
-  @MaxLength(120)
-  name!: string
+const CreateFeeStructureDtoBase = createZodDto(createFeeStructureSchema) as ZodDtoClass
+const UpdateFeeStructureDtoBase = createZodDto(updateFeeStructureSchema) as ZodDtoClass
 
-  @IsNumber()
-  @Min(0)
-  amount!: number
+export class CreateFeeStructureDto extends CreateFeeStructureDtoBase {}
+export interface CreateFeeStructureDto extends CreateFeeStructureInput {}
 
-  @IsOptional()
-  @IsIn(["monthly", "termly", "yearly"])
-  frequency?: "monthly" | "termly" | "yearly"
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  description?: string
-}
-
-export class UpdateFeeStructureDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  name?: string
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  amount?: number
-
-  @IsOptional()
-  @IsIn(["monthly", "termly", "yearly"])
-  frequency?: "monthly" | "termly" | "yearly"
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string | null
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  description?: string | null
-}
+export class UpdateFeeStructureDto extends UpdateFeeStructureDtoBase {}
+export interface UpdateFeeStructureDto extends UpdateFeeStructureInput {}
