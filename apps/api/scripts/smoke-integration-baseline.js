@@ -749,6 +749,82 @@ async function main() {
     }
   }
 
+  // Upload (signed-url + multipart upload + delete)
+  {
+    const t = pushCase(createCase("upload-runtime"))
+    let uploadedKey = ""
+    try {
+      const signedResp = await httpJson(`${baseUrl}/api/upload/signed-url`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          fileName: "integration-smoke.txt",
+          contentType: "text/plain",
+          folder: "integration-smoke",
+          expiresInSeconds: 300,
+        }),
+      })
+      assertOrThrow(
+        signedResp.status === 201 || signedResp.status === 200,
+        "Upload signed-url expected 200/201",
+        pretty(signedResp)
+      )
+      assertOrThrow(
+        typeof signedResp.json?.data?.signedUrl === "string",
+        "Missing signedUrl",
+        pretty(signedResp)
+      )
+
+      const form = new FormData()
+      form.set("tenantId", tenantId)
+      form.set("folder", "integration-smoke")
+      form.set(
+        "file",
+        new Blob(["integration smoke file"], { type: "text/plain" }),
+        "integration-smoke.txt"
+      )
+
+      const uploadResp = await httpJson(`${baseUrl}/api/upload`, {
+        method: "POST",
+        headers: authHeader(),
+        body: form,
+      })
+      assertOrThrow(
+        uploadResp.status === 201 || uploadResp.status === 200,
+        "Upload multipart expected 200/201",
+        pretty(uploadResp)
+      )
+      uploadedKey = uploadResp.json?.data?.key || ""
+      assertOrThrow(uploadedKey, "Missing uploaded object key", pretty(uploadResp))
+
+      const deleteResp = await httpJson(
+        `${baseUrl}/api/upload?tenantId=${encodeURIComponent(tenantId)}`,
+        {
+          method: "DELETE",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({ key: uploadedKey }),
+        }
+      )
+      assertOrThrow(deleteResp.status === 200, "Upload delete expected 200", pretty(deleteResp))
+      uploadedKey = ""
+
+      markOk(t, "POST /upload/signed-url + multipart POST /upload + DELETE /upload -> 200/201")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    } finally {
+      if (uploadedKey) {
+        try {
+          await httpJson(`${baseUrl}/api/upload?tenantId=${encodeURIComponent(tenantId)}`, {
+            method: "DELETE",
+            headers: { ...authHeader(), "Content-Type": "application/json" },
+            body: JSON.stringify({ key: uploadedKey }),
+          })
+        } catch {}
+      }
+    }
+  }
+
   // Notifications runtime (list/unread/send/mark-read)
   {
     const t = pushCase(createCase("notifications-runtime"))

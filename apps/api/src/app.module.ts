@@ -26,6 +26,7 @@ import { StudentsModule } from "./modules/students/students.module"
 import { TeachersModule } from "./modules/teachers/teachers.module"
 import { TenantsModule } from "./modules/tenants/tenants.module"
 import { UsersModule } from "./modules/users/users.module"
+import { UploadModule } from "./modules/upload/upload.module"
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { UsersModule } from "./modules/users/users.module"
     GradesModule,
     ExamsModule,
     FinanceModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [
