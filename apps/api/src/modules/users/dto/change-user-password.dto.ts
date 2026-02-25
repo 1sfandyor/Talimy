@@ -1,7 +1,8 @@
-import { IsString, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { changeUserPasswordSchema, type ChangeUserPasswordInput } from "@talimy/shared"
 
-export class ChangeUserPasswordDto {
-  @IsString()
-  @MinLength(8)
-  newPassword!: string
-}
+type ZodDtoClass = abstract new (...args: never[]) => object
+const ChangeUserPasswordDtoBase = createZodDto(changeUserPasswordSchema) as ZodDtoClass
+
+export class ChangeUserPasswordDto extends ChangeUserPasswordDtoBase {}
+export interface ChangeUserPasswordDto extends ChangeUserPasswordInput {}

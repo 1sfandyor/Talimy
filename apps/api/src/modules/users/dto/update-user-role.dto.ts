@@ -1,6 +1,8 @@
-import { IsIn } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { updateUserRoleSchema, type UpdateUserRoleInput } from "@talimy/shared"
 
-export class UpdateUserRoleDto {
-  @IsIn(["platform_admin", "school_admin", "teacher", "student", "parent"])
-  role!: "platform_admin" | "school_admin" | "teacher" | "student" | "parent"
-}
+type ZodDtoClass = abstract new (...args: never[]) => object
+const UpdateUserRoleDtoBase = createZodDto(updateUserRoleSchema) as ZodDtoClass
+
+export class UpdateUserRoleDto extends UpdateUserRoleDtoBase {}
+export interface UpdateUserRoleDto extends UpdateUserRoleInput {}

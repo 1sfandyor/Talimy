@@ -8,7 +8,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common"
 import {
   changeUserPasswordSchema,
@@ -41,66 +40,76 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @UsePipes(new ZodValidationPipe(listUsersQuerySchema))
-  list(@Query() query: ListUsersQueryDto) {
-    return this.usersService.list(query)
+  list(@Query(new ZodValidationPipe(listUsersQuerySchema)) query: unknown) {
+    return this.usersService.list(query as ListUsersQueryDto)
   }
 
   @Get(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  getById(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.usersService.getById(tenantId, id)
+  getById(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    return this.usersService.getById((query as { tenantId: string }).tenantId, id)
   }
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createUserSchema))
-  create(@Body() payload: CreateUserDto) {
-    return this.usersService.create(payload)
+  create(@Body(new ZodValidationPipe(createUserSchema)) payload: unknown) {
+    return this.usersService.create(payload as CreateUserDto)
   }
 
   @Patch(":id")
-  @UsePipes(new ZodValidationPipe(updateUserSchema))
   update(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
     @Param("id") id: string,
-    @Body() payload: UpdateUserDto
+    @Body(new ZodValidationPipe(updateUserSchema)) payload: unknown
   ) {
-    return this.usersService.update(tenantId, id, payload)
+    return this.usersService.update((query as { tenantId: string }).tenantId, id, payload as UpdateUserDto)
   }
 
   @Patch(":id/role")
-  @UsePipes(new ZodValidationPipe(updateUserRoleSchema))
   changeRole(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
     @Param("id") id: string,
-    @Body() payload: UpdateUserRoleDto
+    @Body(new ZodValidationPipe(updateUserRoleSchema)) payload: unknown
   ) {
-    return this.usersService.changeRole(tenantId, id, payload)
+    return this.usersService.changeRole(
+      (query as { tenantId: string }).tenantId,
+      id,
+      payload as UpdateUserRoleDto
+    )
   }
 
   @Patch(":id/password")
-  @UsePipes(new ZodValidationPipe(changeUserPasswordSchema))
   changePassword(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
     @Param("id") id: string,
-    @Body() payload: ChangeUserPasswordDto
+    @Body(new ZodValidationPipe(changeUserPasswordSchema)) payload: unknown
   ) {
-    return this.usersService.changePassword(tenantId, id, payload)
+    return this.usersService.changePassword(
+      (query as { tenantId: string }).tenantId,
+      id,
+      payload as ChangeUserPasswordDto
+    )
   }
 
   @Patch(":id/avatar")
-  @UsePipes(new ZodValidationPipe(updateUserAvatarSchema))
   updateAvatar(
-    @Query("tenantId") tenantId: string,
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
     @Param("id") id: string,
-    @Body() payload: UpdateUserAvatarDto
+    @Body(new ZodValidationPipe(updateUserAvatarSchema)) payload: unknown
   ) {
-    return this.usersService.updateAvatar(tenantId, id, payload)
+    return this.usersService.updateAvatar(
+      (query as { tenantId: string }).tenantId,
+      id,
+      payload as UpdateUserAvatarDto
+    )
   }
 
   @Delete(":id")
-  @UsePipes(new ZodValidationPipe(userTenantQuerySchema))
-  delete(@Query("tenantId") tenantId: string, @Param("id") id: string) {
-    return this.usersService.delete(tenantId, id)
+  delete(
+    @Query(new ZodValidationPipe(userTenantQuerySchema)) query: unknown,
+    @Param("id") id: string
+  ) {
+    return this.usersService.delete((query as { tenantId: string }).tenantId, id)
   }
 }

@@ -1,20 +1,8 @@
-import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MinLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { updateUserSchema, type UpdateUserInput } from "@talimy/shared"
 
-export class UpdateUserDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  fullName?: string
+type ZodDtoClass = abstract new (...args: never[]) => object
+const UpdateUserDtoBase = createZodDto(updateUserSchema) as ZodDtoClass
 
-  @IsOptional()
-  @IsEmail()
-  email?: string
-
-  @IsOptional()
-  @IsIn(["platform_admin", "school_admin", "teacher", "student", "parent"])
-  role?: "platform_admin" | "school_admin" | "teacher" | "student" | "parent"
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean
-}
+export class UpdateUserDto extends UpdateUserDtoBase {}
+export interface UpdateUserDto extends UpdateUserInput {}

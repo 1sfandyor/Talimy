@@ -1,8 +1,8 @@
-import { IsString, IsUrl, MaxLength } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { updateUserAvatarSchema, type UpdateUserAvatarInput } from "@talimy/shared"
 
-export class UpdateUserAvatarDto {
-  @IsString()
-  @IsUrl()
-  @MaxLength(500)
-  avatar!: string
-}
+type ZodDtoClass = abstract new (...args: never[]) => object
+const UpdateUserAvatarDtoBase = createZodDto(updateUserAvatarSchema) as ZodDtoClass
+
+export class UpdateUserAvatarDto extends UpdateUserAvatarDtoBase {}
+export interface UpdateUserAvatarDto extends UpdateUserAvatarInput {}
