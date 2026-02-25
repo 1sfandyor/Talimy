@@ -848,9 +848,9 @@ async function main() {
         })
         if (
           chatResp.status === 503 &&
-          String(chatResp.json?.error?.message ?? chatResp.text).includes("ANTHROPIC_API_KEY")
+          String(chatResp.json?.error?.message ?? chatResp.text).includes("OPENROUTER_API_KEY")
         ) {
-          markSkip(t, "ANTHROPIC_API_KEY not configured on API deploy")
+          markSkip(t, "OPENROUTER_API_KEY not configured on API deploy")
         } else {
           assertOrThrow(
             chatResp.status === 201 || chatResp.status === 200,

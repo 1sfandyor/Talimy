@@ -4,16 +4,17 @@ import { test } from "node:test"
 
 import { ServiceUnavailableException } from "@nestjs/common"
 
+import { AiOpenRouterClient } from "./ai.openrouter.client"
 import { AiService } from "./ai.service"
 
 const tenantId = "11111111-1111-4111-8111-111111111111"
 
-test("AiService.chat throws 503 when ANTHROPIC_API_KEY is missing", async () => {
-  const previous = process.env.ANTHROPIC_API_KEY
-  delete process.env.ANTHROPIC_API_KEY
+test("AiService.chat throws 503 when OPENROUTER_API_KEY is missing", async () => {
+  const previous = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
 
   try {
-    const service = new AiService()
+    const service = new AiService(new AiOpenRouterClient(), {} as never)
     await assert.rejects(
       () =>
         service.chat(
@@ -26,6 +27,6 @@ test("AiService.chat throws 503 when ANTHROPIC_API_KEY is missing", async () => 
       (error: unknown) => error instanceof ServiceUnavailableException
     )
   } finally {
-    if (previous) process.env.ANTHROPIC_API_KEY = previous
+    if (previous) process.env.OPENROUTER_API_KEY = previous
   }
 })
