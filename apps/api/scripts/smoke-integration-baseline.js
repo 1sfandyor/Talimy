@@ -577,6 +577,96 @@ async function main() {
     }
   }
 
+  // Calendar / Events (CRUD + filters + invalid date range)
+  {
+    const t = pushCase(createCase("calendar-runtime"))
+    let createdEventId = ""
+    try {
+      const listResp = await httpJson(
+        `${baseUrl}/api/events?tenantId=${encodeURIComponent(tenantId)}&page=1&limit=5`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(listResp.status === 200, "Events list expected 200", pretty(listResp))
+
+      const invalidRangeResp = await httpJson(
+        `${baseUrl}/api/events?tenantId=${encodeURIComponent(tenantId)}&dateFrom=${encodeURIComponent("2026-12-31T00:00:00.000Z")}&dateTo=${encodeURIComponent("2026-01-01T00:00:00.000Z")}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        invalidRangeResp.status === 400,
+        "Events invalid date range expected 400",
+        pretty(invalidRangeResp)
+      )
+
+      const now = new Date()
+      const startDate = new Date(now.getTime() + 60 * 60 * 1000).toISOString()
+      const endDate = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString()
+
+      const createResp = await httpJson(`${baseUrl}/api/events`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          title: "integration smoke event",
+          description: "integration smoke calendar event",
+          startDate,
+          endDate,
+          location: "Mezana Hall",
+          type: "academic",
+        }),
+      })
+      assertOrThrow(createResp.status === 201, "Events create expected 201", pretty(createResp))
+      createdEventId = createResp.json?.data?.id || ""
+      assertOrThrow(createdEventId, "Missing created event id", pretty(createResp))
+
+      const getResp = await httpJson(
+        `${baseUrl}/api/events/${createdEventId}?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(getResp.status === 200, "Events getById expected 200", pretty(getResp))
+
+      const filterResp = await httpJson(
+        `${baseUrl}/api/events?tenantId=${encodeURIComponent(tenantId)}&type=academic&dateFrom=${encodeURIComponent(startDate)}&dateTo=${encodeURIComponent(endDate)}&page=1&limit=10`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        filterResp.status === 200,
+        "Events filtered list expected 200",
+        pretty(filterResp)
+      )
+
+      const updateResp = await httpJson(
+        `${baseUrl}/api/events/${createdEventId}?tenantId=${encodeURIComponent(tenantId)}`,
+        {
+          method: "PATCH",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "integration smoke event updated", type: "other" }),
+        }
+      )
+      assertOrThrow(updateResp.status === 200, "Events update expected 200", pretty(updateResp))
+
+      const deleteResp = await httpJson(
+        `${baseUrl}/api/events/${createdEventId}?tenantId=${encodeURIComponent(tenantId)}`,
+        { method: "DELETE", headers: authHeader() }
+      )
+      assertOrThrow(deleteResp.status === 200, "Events delete expected 200", pretty(deleteResp))
+
+      markOk(t, "GET/POST/PATCH/DELETE /api/events + filters -> 200/201/200/200/200")
+      createdEventId = ""
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    } finally {
+      if (createdEventId) {
+        try {
+          await httpJson(
+            `${baseUrl}/api/events/${createdEventId}?tenantId=${encodeURIComponent(tenantId)}`,
+            { method: "DELETE", headers: authHeader() }
+          )
+        } catch {}
+      }
+    }
+  }
+
   // Finance (overview/summary/fee-structures)
   {
     const t = pushCase(createCase("finance-runtime"))

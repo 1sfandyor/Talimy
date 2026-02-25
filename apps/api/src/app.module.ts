@@ -14,6 +14,7 @@ import { AuthModule } from "./modules/auth/auth.module"
 import { AssignmentsModule } from "./modules/assignments/assignments.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
 import { ClassesModule } from "./modules/classes/classes.module"
+import { CalendarModule } from "./modules/calendar/calendar.module"
 import { ExamsModule } from "./modules/exams/exams.module"
 import { FinanceModule } from "./modules/finance/finance.module"
 import { GradesModule } from "./modules/grades/grades.module"
@@ -40,6 +41,7 @@ import { UsersModule } from "./modules/users/users.module"
     NotificationsModule,
     ScheduleModule,
     ClassesModule,
+    CalendarModule,
     AttendanceModule,
     AssignmentsModule,
     GradesModule,
