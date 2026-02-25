@@ -82,6 +82,7 @@ async function main() {
   let createdNoticeId = ""
   let currentUserId = ""
   let discoveredExamId = ""
+  let discoveredClassId = ""
 
   // Health
   {
@@ -262,7 +263,100 @@ async function main() {
         { headers: authHeader() }
       )
       assertOrThrow(resp.status === 200, "Classes list expected 200", pretty(resp))
+      discoveredClassId = extractRows(resp.json)?.[0]?.id || ""
       markOk(t, "GET /api/classes -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Teachers positive CRUD (requires /api/users + /api/teachers)
+  {
+    const t = pushCase(createCase("teachers-crud"))
+    try {
+      assertOrThrow(token, "Missing auth token from register")
+
+      const teacherUserEmail = `teacher.smoke+${Date.now()}@mezana.talimy.space`
+      const createUserResp = await httpJson(`${baseUrl}/api/users`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          fullName: "Teacher Smoke",
+          email: teacherUserEmail,
+          password: "Password123",
+          role: "teacher",
+        }),
+      })
+      assertOrThrow(
+        createUserResp.status === 201 || createUserResp.status === 200,
+        "Users create (teacher) expected 200/201",
+        pretty(createUserResp)
+      )
+      const teacherUserId = createUserResp.json?.data?.id
+      assertOrThrow(teacherUserId, "Missing created teacher user id", pretty(createUserResp))
+
+      const createTeacherResp = await httpJson(`${baseUrl}/api/teachers`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          userId: teacherUserId,
+          employeeId: `EMP-${Date.now()}`,
+          firstName: "Teacher",
+          lastName: "Smoke",
+          phone: "+998901112233",
+          gender: "male",
+          qualification: "Bachelor",
+          experienceYears: 3,
+          joinDate: "2026-01-01",
+          dateOfBirth: "1995-01-01",
+          status: "active",
+        }),
+      })
+      assertOrThrow(
+        createTeacherResp.status === 201 || createTeacherResp.status === 200,
+        "Teachers create expected 200/201",
+        pretty(createTeacherResp)
+      )
+      const teacherId = createTeacherResp.json?.data?.id
+      assertOrThrow(teacherId, "Missing teacher profile id", pretty(createTeacherResp))
+
+      const getTeacherResp = await httpJson(
+        `${baseUrl}/api/teachers/${teacherId}?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: authHeader() }
+      )
+      assertOrThrow(
+        getTeacherResp.status === 200,
+        "Teachers getById expected 200",
+        pretty(getTeacherResp)
+      )
+
+      const patchTeacherResp = await httpJson(
+        `${baseUrl}/api/teachers/${teacherId}?tenantId=${encodeURIComponent(tenantId)}`,
+        {
+          method: "PATCH",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({ tenantId, qualification: "Master", experienceYears: 4 }),
+        }
+      )
+      assertOrThrow(
+        patchTeacherResp.status === 200,
+        "Teachers update expected 200",
+        pretty(patchTeacherResp)
+      )
+
+      const deleteTeacherResp = await httpJson(
+        `${baseUrl}/api/teachers/${teacherId}?tenantId=${encodeURIComponent(tenantId)}`,
+        { method: "DELETE", headers: authHeader() }
+      )
+      assertOrThrow(
+        deleteTeacherResp.status === 200,
+        "Teachers delete expected 200",
+        pretty(deleteTeacherResp)
+      )
+
+      markOk(t, "POST /users + teachers CRUD -> 201/200/200/200")
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
@@ -455,7 +549,29 @@ async function main() {
         { headers: authHeader() }
       )
       assertOrThrow(dayResp.status === 200, "Schedule day filter expected 200", pretty(dayResp))
-      markOk(t, "GET /api/schedule + day filter -> 200")
+      if (!discoveredClassId) {
+        markSkip(t, "No class row available for invalid create payload check")
+      } else {
+        const invalidCreateResp = await httpJson(`${baseUrl}/api/schedule`, {
+          method: "POST",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId,
+            classId: discoveredClassId,
+            subjectId: "11111111-1111-4111-8111-111111111111",
+            teacherId: "22222222-2222-4222-8222-222222222222",
+            dayOfWeek: "monday",
+            startTime: "12:00",
+            endTime: "10:00",
+          }),
+        })
+        assertOrThrow(
+          invalidCreateResp.status === 400 || invalidCreateResp.status === 404,
+          "Schedule invalid create expected 400/404",
+          pretty(invalidCreateResp)
+        )
+        markOk(t, "GET /schedule + day filter + invalid create -> 200/200/400")
+      }
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
