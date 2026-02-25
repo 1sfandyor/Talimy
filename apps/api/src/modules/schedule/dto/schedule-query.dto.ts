@@ -1,24 +1,8 @@
-import { IsIn, IsOptional, IsUUID } from "class-validator"
+import { createZodDto } from "nestjs-zod"
+import { scheduleQuerySchema, type ScheduleQueryInput } from "@talimy/shared"
 
-import { PaginationDto } from "@/common/dto/pagination.dto"
+type ZodDtoClass = abstract new (...args: never[]) => object
+const ScheduleQueryDtoBase = createZodDto(scheduleQuerySchema) as ZodDtoClass
 
-export class ScheduleQueryDto extends PaginationDto {
-  @IsUUID()
-  tenantId!: string
-
-  @IsOptional()
-  @IsUUID()
-  classId?: string
-
-  @IsOptional()
-  @IsUUID()
-  subjectId?: string
-
-  @IsOptional()
-  @IsUUID()
-  teacherId?: string
-
-  @IsOptional()
-  @IsIn(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
-  dayOfWeek?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
-}
+export class ScheduleQueryDto extends ScheduleQueryDtoBase {}
+export interface ScheduleQueryDto extends ScheduleQueryInput {}

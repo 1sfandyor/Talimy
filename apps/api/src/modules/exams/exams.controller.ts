@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  ParseUUIDPipe,
-  Param,
-  Patch,
-  Post,
-  Query,
-  UseGuards,
-} from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 import {
   createExamSchema,
   enterExamResultsSchema,
@@ -17,6 +6,7 @@ import {
   updateExamSchema,
   userTenantQuerySchema,
 } from "@talimy/shared"
+import { z } from "zod"
 
 import { Roles } from "@/common/decorators/roles.decorator"
 import { AuthGuard } from "@/common/guards/auth.guard"
@@ -70,7 +60,7 @@ export class ExamsController {
 
   @Get(":id")
   getById(
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new ZodValidationPipe(z.string().uuid())) id: string,
     @Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown
   ) {
     const query = queryInput as { tenantId: string }
