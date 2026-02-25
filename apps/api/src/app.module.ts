@@ -13,6 +13,7 @@ import { PermifyModule } from "./modules/authz/permify/permify.module"
 import { AuthModule } from "./modules/auth/auth.module"
 import { AssignmentsModule } from "./modules/assignments/assignments.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
+import { AiModule } from "./modules/ai/ai.module"
 import { ClassesModule } from "./modules/classes/classes.module"
 import { CalendarModule } from "./modules/calendar/calendar.module"
 import { ExamsModule } from "./modules/exams/exams.module"
@@ -49,6 +50,7 @@ import { UploadModule } from "./modules/upload/upload.module"
     ExamsModule,
     FinanceModule,
     UploadModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [

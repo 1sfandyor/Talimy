@@ -83,6 +83,7 @@ async function main() {
   let currentUserId = ""
   let discoveredExamId = ""
   let discoveredClassId = ""
+  let discoveredStudentId = ""
 
   // Health
   {
@@ -223,6 +224,7 @@ async function main() {
         { headers: authHeader() }
       )
       assertOrThrow(listResp.status === 200, "Students list expected 200", pretty(listResp))
+      discoveredStudentId = extractRows(listResp.json)?.[0]?.id || ""
 
       const invalidResp = await httpJson(
         `${baseUrl}/api/students?tenantId=${encodeURIComponent(tenantId)}&enrollmentDateFrom=2026-12-31&enrollmentDateTo=2026-01-01`,
@@ -822,6 +824,95 @@ async function main() {
           })
         } catch {}
       }
+    }
+  }
+
+  // AI runtime (chat/report/insights + stream header check) - optional when ANTHROPIC key is not configured
+  {
+    const t = pushCase(createCase("ai-runtime"))
+    try {
+      if (!discoveredStudentId) {
+        markSkip(t, "No student row available for AI insights")
+      } else {
+        const chatPayload = {
+          tenantId,
+          messages: [{ role: "user", content: "Qisqa salom va bitta motivatsion gap yozing." }],
+          maxTokens: 128,
+          temperature: 0.2,
+        }
+
+        const chatResp = await httpJson(`${baseUrl}/api/ai/chat`, {
+          method: "POST",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify(chatPayload),
+        })
+        if (
+          chatResp.status === 503 &&
+          String(chatResp.json?.error?.message ?? chatResp.text).includes("ANTHROPIC_API_KEY")
+        ) {
+          markSkip(t, "ANTHROPIC_API_KEY not configured on API deploy")
+        } else {
+          assertOrThrow(
+            chatResp.status === 201 || chatResp.status === 200,
+            "AI chat expected 200/201",
+            pretty(chatResp)
+          )
+
+          const reportResp = await httpJson(`${baseUrl}/api/ai/report/generate`, {
+            method: "POST",
+            headers: { ...authHeader(), "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenantId,
+              type: "school_summary",
+              parameters: { source: "integration-smoke" },
+            }),
+          })
+          assertOrThrow(
+            reportResp.status === 201 || reportResp.status === 200,
+            "AI report generate expected 200/201",
+            pretty(reportResp)
+          )
+
+          const insightsResp = await httpJson(
+            `${baseUrl}/api/ai/insights/${discoveredStudentId}?tenantId=${encodeURIComponent(tenantId)}&type=progress_summary&regenerate=true`,
+            { headers: authHeader() }
+          )
+          assertOrThrow(
+            insightsResp.status === 200,
+            "AI insights expected 200",
+            pretty(insightsResp)
+          )
+
+          const streamResp = await fetch(`${baseUrl}/api/ai/chat/stream`, {
+            method: "POST",
+            headers: { ...authHeader(), "Content-Type": "application/json" },
+            body: JSON.stringify(chatPayload),
+          })
+          assertOrThrow(streamResp.status === 200, "AI chat stream expected 200", {
+            status: streamResp.status,
+            body: await streamResp.text(),
+          })
+          assertOrThrow(
+            (streamResp.headers.get("content-type") || "").includes("text/event-stream"),
+            "AI chat stream expected text/event-stream",
+            { headers: Object.fromEntries(streamResp.headers.entries()) }
+          )
+          try {
+            const reader = streamResp.body?.getReader()
+            if (reader) {
+              await reader.read()
+              await reader.cancel()
+            }
+          } catch {}
+
+          markOk(
+            t,
+            "POST /ai/chat + /ai/report/generate + GET /ai/insights/:studentId + /ai/chat/stream -> 200"
+          )
+        }
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
   }
 
