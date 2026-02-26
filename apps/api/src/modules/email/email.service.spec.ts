@@ -20,6 +20,22 @@ function createService() {
   return new EmailService(templates)
 }
 
+function stubResendClientSend(
+  service: EmailService,
+  implementation: () => Promise<{
+    data: { id?: string } | null
+    error: { message: string } | null
+  }>
+) {
+  ;(
+    service as unknown as { getClient: () => { emails: { send: typeof implementation } } }
+  ).getClient = () => ({
+    emails: {
+      send: implementation,
+    },
+  })
+}
+
 test("EmailService.send throws when RESEND_API_KEY is missing", async () => {
   const previous = process.env.RESEND_API_KEY
   delete process.env.RESEND_API_KEY
@@ -38,16 +54,14 @@ test("EmailService.send throws when RESEND_API_KEY is missing", async () => {
 
 test("EmailService.send maps Resend success response", async () => {
   const previousKey = process.env.RESEND_API_KEY
-  const previousFetch = globalThis.fetch
   process.env.RESEND_API_KEY = "test-key"
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ id: "resend-msg-1" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    })) as typeof fetch
 
   try {
     const service = createService()
+    stubResendClientSend(service, async () => ({
+      data: { id: "resend-msg-1" },
+      error: null,
+    }))
     const result = await service.send({
       tenantId,
       to: ["user@example.com"],
@@ -61,22 +75,19 @@ test("EmailService.send maps Resend success response", async () => {
     assert.deepEqual(result.messageIds, ["resend-msg-1"])
   } finally {
     process.env.RESEND_API_KEY = previousKey
-    globalThis.fetch = previousFetch
   }
 })
 
 test("EmailService.sendTemplate delegates to render + send", async () => {
   const previousKey = process.env.RESEND_API_KEY
-  const previousFetch = globalThis.fetch
   process.env.RESEND_API_KEY = "test-key"
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ data: { id: "resend-msg-2" } }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    })) as typeof fetch
 
   try {
     const service = createService()
+    stubResendClientSend(service, async () => ({
+      data: { id: "resend-msg-2" },
+      error: null,
+    }))
     const result = await service.sendTemplate({
       tenantId,
       to: ["user@example.com"],
@@ -86,6 +97,5 @@ test("EmailService.sendTemplate delegates to render + send", async () => {
     assert.equal(result.accepted, 1)
   } finally {
     process.env.RESEND_API_KEY = previousKey
-    globalThis.fetch = previousFetch
   }
 })

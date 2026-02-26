@@ -1,62 +1,51 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common"
 import { emailSendSchema, emailTemplateRenderSchema } from "@talimy/shared"
+import { Resend } from "resend"
 
 import type { EmailSendPayload, EmailSendResult, EmailTemplatePayload } from "./email.types"
 import { EmailTemplatesService } from "./email.templates"
 
 @Injectable()
 export class EmailService {
-  private readonly baseUrl = process.env.RESEND_BASE_URL?.trim() || "https://api.resend.com"
   private readonly fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || "noreply@talimy.space"
+  private clientCache = new Map<string, Resend>()
 
   constructor(private readonly templates: EmailTemplatesService) {}
 
   async send(payload: EmailSendPayload): Promise<EmailSendResult> {
     const body = emailSendSchema.parse(payload)
-    const apiKey = this.requireApiKey()
-
-    const res = await fetch(`${this.baseUrl.replace(/\/+$/, "")}/emails`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: this.fromEmail,
-        to: body.to,
-        subject: body.subject,
-        html: body.html,
-        text: body.text,
-        tags: body.tags
-          ? Object.entries(body.tags).map(([name, value]) => ({ name, value }))
-          : undefined,
-      }),
+    const client = this.getClient()
+    const { data, error } = await client.emails.send({
+      from: this.fromEmail,
+      to: body.to,
+      subject: body.subject,
+      html: body.html,
+      text: body.text,
+      tags: body.tags
+        ? Object.entries(body.tags).map(([name, value]) => ({ name, value }))
+        : undefined,
     })
 
-    const text = await res.text()
-    const json = this.tryJson(text)
-    if (!res.ok) {
-      throw new ServiceUnavailableException(
-        `Resend API failed (${res.status}): ${this.extractError(json, text)}`
-      )
+    if (error) {
+      throw new ServiceUnavailableException(`Resend API failed: ${error.message}`)
     }
 
-    const jsonObj =
-      typeof json === "object" && json !== null ? (json as Record<string, unknown>) : null
-    const dataObj =
-      jsonObj && typeof jsonObj.data === "object" && jsonObj.data !== null
-        ? (jsonObj.data as Record<string, unknown>)
-        : null
-    const id =
-      (jsonObj && typeof jsonObj.id === "string" && jsonObj.id) ||
-      (dataObj && typeof dataObj.id === "string" && dataObj.id) ||
-      null
+    const id = typeof data?.id === "string" ? data.id : null
     return {
       provider: "resend",
       accepted: body.to.length,
       messageIds: id ? [id] : [],
       skipped: false,
     }
+  }
+
+  private getClient(): Resend {
+    const apiKey = this.requireApiKey()
+    const existing = this.clientCache.get(apiKey)
+    if (existing) return existing
+    const client = new Resend(apiKey)
+    this.clientCache.set(apiKey, client)
+    return client
   }
 
   async sendTemplate(payload: EmailTemplatePayload): Promise<EmailSendResult> {
@@ -100,26 +89,5 @@ export class EmailService {
       throw new ServiceUnavailableException("RESEND_API_KEY is not configured")
     }
     return key
-  }
-
-  private tryJson(text: string): unknown {
-    try {
-      return text ? JSON.parse(text) : null
-    } catch {
-      return null
-    }
-  }
-
-  private extractError(json: unknown, text: string): string {
-    const obj = typeof json === "object" && json !== null ? (json as Record<string, unknown>) : {}
-    const nestedError =
-      typeof obj.error === "object" && obj.error !== null
-        ? (obj.error as Record<string, unknown>)
-        : null
-    const message =
-      (typeof obj.message === "string" && obj.message) ||
-      (nestedError && typeof nestedError.message === "string" && nestedError.message) ||
-      (typeof obj.name === "string" && obj.name)
-    return message || text.slice(0, 300) || "unknown error"
   }
 }
