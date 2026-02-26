@@ -8,6 +8,12 @@ function getArg(name, fallback = "") {
   return hit ? hit.slice(prefix.length) : fallback
 }
 
+function getBoolArg(name, fallback = false) {
+  const raw = getArg(name, "")
+  if (!raw) return fallback
+  return ["1", "true", "yes", "on"].includes(String(raw).toLowerCase())
+}
+
 function createCase(name) {
   return { name, ok: false, skipped: false, detail: "" }
 }
@@ -77,6 +83,10 @@ async function main() {
     process.env.PLATFORM_ADMIN_EMAIL || "admin@talimy.space"
   )
   const platformPassword = getArg("platform-password", process.env.PLATFORM_ADMIN_PASSWORD || "")
+  const strictEmail = getBoolArg(
+    "strict-email",
+    Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL)
+  )
 
   const results = []
   const pushCase = (t) => {
@@ -864,7 +874,27 @@ async function main() {
         "Missing emailDispatched count",
         pretty(sendResp)
       )
-      markOk(t, "POST /notifications/send (email channel) -> 200")
+      if (strictEmail) {
+        assertOrThrow(
+          sendData.emailDispatched > 0,
+          "Expected emailDispatched > 0 (strict email mode)",
+          { response: pretty(sendResp), emailDispatched: sendData.emailDispatched }
+        )
+        markOk(
+          t,
+          `POST /notifications/send (email channel) -> 200 (emailDispatched=${sendData.emailDispatched})`
+        )
+      } else if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
+        markSkip(
+          t,
+          `RESEND_API_KEY/RESEND_FROM_EMAIL not configured for strict dispatch verification (emailDispatched=${sendData.emailDispatched})`
+        )
+      } else {
+        markOk(
+          t,
+          `POST /notifications/send (email channel) -> 200 (emailDispatched=${sendData.emailDispatched})`
+        )
+      }
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
