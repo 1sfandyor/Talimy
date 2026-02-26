@@ -5,6 +5,7 @@ import { test } from "node:test"
 import { ForbiddenException } from "@nestjs/common"
 
 import { NotificationsService } from "./notifications.service"
+import type { EmailService } from "../email/email.service"
 import type { NotificationsGateway } from "./notifications.gateway"
 import type { NotificationChannel } from "./dto/send-notification.dto"
 
@@ -12,7 +13,10 @@ const tenantId = "11111111-1111-1111-1111-111111111111"
 
 function createService() {
   const gateway = {} as NotificationsGateway
-  return new NotificationsService(gateway)
+  const emailService = {
+    sendNotificationEmails: async () => 0,
+  } as unknown as EmailService
+  return new NotificationsService(gateway, emailService)
 }
 
 test("NotificationsService resolves channels with default and de-duplication", () => {

@@ -39,6 +39,14 @@ function extractRows(envelope) {
   return []
 }
 
+function successData(envelope) {
+  const data = envelope?.data
+  if (data && typeof data === "object" && data.data && typeof data.data === "object") {
+    return data.data
+  }
+  return data
+}
+
 function markOk(test, detail = "") {
   test.ok = true
   test.detail = detail
@@ -824,6 +832,41 @@ async function main() {
           })
         } catch {}
       }
+    }
+  }
+
+  // Email runtime (via notifications email channel)
+  {
+    const t = pushCase(createCase("email-runtime"))
+    try {
+      assertOrThrow(token, "Missing auth token from register")
+      assertOrThrow(currentUserId, "Missing current user id from register token")
+
+      const sendResp = await httpJson(`${baseUrl}/api/notifications/send`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          recipientUserIds: [currentUserId],
+          title: "integration smoke email notification",
+          message: "integration smoke email message",
+          channels: ["email"],
+        }),
+      })
+      assertOrThrow(
+        sendResp.status === 200 || sendResp.status === 201,
+        "Notifications email send expected 200/201",
+        pretty(sendResp)
+      )
+      const sendData = successData(sendResp.json)
+      assertOrThrow(
+        typeof sendData?.emailDispatched === "number",
+        "Missing emailDispatched count",
+        pretty(sendResp)
+      )
+      markOk(t, "POST /notifications/send (email channel) -> 200")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
   }
 

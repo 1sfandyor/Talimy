@@ -11,6 +11,7 @@ import type {
   SendNotificationDto,
 } from "./dto/send-notification.dto"
 import { NotificationsGateway } from "./notifications.gateway"
+import { EmailService } from "../email/email.service"
 
 type ActorContext = {
   id: string
@@ -42,7 +43,10 @@ type NotificationRecipient = {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name)
 
-  constructor(private readonly gateway: NotificationsGateway) {}
+  constructor(
+    private readonly gateway: NotificationsGateway,
+    private readonly emailService: EmailService
+  ) {}
 
   async list(actor: ActorContext, query: NotificationsQueryDto) {
     const { tenantId, targetUserId } = this.assertScope(actor, {
@@ -77,7 +81,8 @@ export class NotificationsService {
     const safePage = Math.min(page, totalPages)
     const offset = (safePage - 1) * limit
 
-    const orderField = query.sort === "updatedAt" ? notifications.updatedAt : notifications.createdAt
+    const orderField =
+      query.sort === "updatedAt" ? notifications.updatedAt : notifications.createdAt
     const orderBy = query.order === "asc" ? asc(orderField) : desc(orderField)
 
     const rows = await db
@@ -255,7 +260,10 @@ export class NotificationsService {
     }
   }
 
-  private async getRecipients(tenantId: string, recipientIds: string[]): Promise<NotificationRecipient[]> {
+  private async getRecipients(
+    tenantId: string,
+    recipientIds: string[]
+  ): Promise<NotificationRecipient[]> {
     return db
       .select({
         id: users.id,
@@ -276,12 +284,21 @@ export class NotificationsService {
   ): Promise<number> {
     const eligible = recipients.filter((recipient) => recipient.email.length > 0)
     if (eligible.length === 0) return 0
-
-    this.logger.log(
-      `Email notification dispatch requested for ${eligible.length} recipient(s): ${title}`
-    )
-    this.logger.debug(`Email payload preview: ${message.slice(0, 120)}`)
-    return eligible.length
+    const tenantId = eligible[0]?.tenantId
+    if (!tenantId) return 0
+    try {
+      return await this.emailService.sendNotificationEmails({
+        tenantId,
+        to: eligible.map((recipient) => recipient.email),
+        title,
+        message,
+      })
+    } catch (error) {
+      this.logger.error(
+        `Email notification dispatch failed: ${error instanceof Error ? error.message : "unknown error"}`
+      )
+      return 0
+    }
   }
 
   private async dispatchSms(recipients: NotificationRecipient[], message: string): Promise<number> {
