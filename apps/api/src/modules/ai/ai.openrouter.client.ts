@@ -16,7 +16,7 @@ export class AiOpenRouterClient {
   private readonly baseUrl =
     process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1"
   private readonly defaultModel =
-    process.env.OPENROUTER_MODEL?.trim() || "anthropic/claude-sonnet-4"
+    process.env.OPENROUTER_MODEL?.trim() || "arcee-ai/trinity-large-preview:free"
   private readonly appReferer =
     process.env.OPENROUTER_HTTP_REFERER?.trim() || "https://talimy.space"
   private readonly appTitle = process.env.OPENROUTER_X_TITLE?.trim() || "Talimy"
