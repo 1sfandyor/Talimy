@@ -1,4 +1,4 @@
-ARG BUN_IMAGE=oven/bun:latest
+ARG BUN_IMAGE=oven/bun:1.3.9
 
 FROM ${BUN_IMAGE} AS base
 WORKDIR /app
@@ -16,8 +16,8 @@ COPY --from=base /app /app
 ARG APP_TARGET=web
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN bun run --smol --cwd packages/shared build
-RUN bun run --smol --cwd apps/web build
+RUN bun run --cwd packages/shared build
+RUN bun run --cwd apps/web build
 RUN test -f /app/apps/web/.next/BUILD_ID
 
 FROM ${BUN_IMAGE} AS runner

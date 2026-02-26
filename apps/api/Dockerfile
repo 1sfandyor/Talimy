@@ -1,4 +1,6 @@
-FROM oven/bun:latest AS base
+ARG BUN_IMAGE=oven/bun:1.3.9
+
+FROM ${BUN_IMAGE} AS base
 WORKDIR /app
 
 COPY package.json bun.lock turbo.json tsconfig.base.json ./
@@ -25,7 +27,7 @@ RUN set -eux; \
     exit 1; \
   fi
 
-FROM oven/bun:latest AS deps-prod
+FROM ${BUN_IMAGE} AS deps-prod
 WORKDIR /app
 
 COPY package.json bun.lock turbo.json tsconfig.base.json ./
@@ -36,7 +38,7 @@ COPY tooling ./tooling
 RUN HUSKY=0 NODE_ENV=production bun install --frozen-lockfile
 
 
-FROM oven/bun:latest AS runner
+FROM ${BUN_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

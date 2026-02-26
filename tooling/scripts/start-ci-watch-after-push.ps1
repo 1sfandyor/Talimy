@@ -71,7 +71,10 @@ function Start-WatcherProcess {
     [Parameter(Mandatory = $true)][string]$SkillScriptPath
   )
 
-  $autoFixEnabled = ($env:TALIMY_POST_PUSH_CI_WATCH_AUTOFIX -eq "1")
+  $autoFixRequested = ($env:TALIMY_POST_PUSH_CI_WATCH_AUTOFIX -eq "1")
+  $isProtectedBranch = @("main", "master") -contains $BranchName
+  $allowProtectedAutoFix = ($env:TALIMY_POST_PUSH_CI_WATCH_AUTOFIX_PROTECTED -eq "1")
+  $autoFixEnabled = $autoFixRequested -and ((-not $isProtectedBranch) -or $allowProtectedAutoFix)
   $maxAttempts = if ($env:TALIMY_POST_PUSH_CI_WATCH_MAX_ATTEMPTS) { $env:TALIMY_POST_PUSH_CI_WATCH_MAX_ATTEMPTS } else { "2" }
   $interval = if ($env:TALIMY_POST_PUSH_CI_WATCH_INTERVAL_SECONDS) { $env:TALIMY_POST_PUSH_CI_WATCH_INTERVAL_SECONDS } else { "20" }
   $watchMaxMinutes = if ($env:TALIMY_POST_PUSH_CI_WATCH_MAX_MINUTES) { $env:TALIMY_POST_PUSH_CI_WATCH_MAX_MINUTES } else { "60" }
@@ -89,7 +92,14 @@ function Start-WatcherProcess {
 
   if ($autoFixEnabled) {
     $args += "-AutoFix"
-    Write-Info "AutoFix mode enabled via TALIMY_POST_PUSH_CI_WATCH_AUTOFIX=1"
+    if ($isProtectedBranch) {
+      $args += "-AllowMain"
+      Write-Info "AutoFix enabled on protected branch via TALIMY_POST_PUSH_CI_WATCH_AUTOFIX_PROTECTED=1"
+    } else {
+      Write-Info "AutoFix mode enabled on feature branch via TALIMY_POST_PUSH_CI_WATCH_AUTOFIX=1"
+    }
+  } elseif ($autoFixRequested -and $isProtectedBranch) {
+    Write-Info "AutoFix requested, but '$BranchName' is protected. Running watch-only (set TALIMY_POST_PUSH_CI_WATCH_AUTOFIX_PROTECTED=1 to override)."
   }
 
   if ($DryRun) {
