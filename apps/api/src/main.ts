@@ -8,6 +8,7 @@ import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter"
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor"
 import { TimeoutInterceptor } from "./common/interceptors/timeout.interceptor"
 import { TransformInterceptor } from "./common/interceptors/transform.interceptor"
+import { mountTrpcHttpAdapter } from "./trpc/trpc-http-adapter"
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule)
@@ -30,6 +31,7 @@ async function bootstrap(): Promise<void> {
     new TransformInterceptor()
   )
   app.useGlobalFilters(new AllExceptionsFilter())
+  mountTrpcHttpAdapter(app)
 
   const port = Number(process.env.PORT ?? 4000)
   await app.listen(port)
