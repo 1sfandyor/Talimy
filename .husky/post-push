@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+
+# Auto-start CI watcher after each push (Windows/PowerShell wrapper).
+# Disable for a push/session with: TALIMY_POST_PUSH_CI_WATCH=0
+if [ "${TALIMY_POST_PUSH_CI_WATCH:-1}" = "0" ]; then
+  exit 0
+fi
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tooling/scripts/start-ci-watch-after-push.ps1" "$@" || true
+
