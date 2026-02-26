@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 
-# Auto-start CI watcher after each push (Windows/PowerShell wrapper).
+# Git has no client-side post-push hook. Use pre-push to start an async watcher
+# process that keeps running after the push completes.
+#
 # Disable for a push/session with: TALIMY_POST_PUSH_CI_WATCH=0
 if [ "${TALIMY_POST_PUSH_CI_WATCH:-1}" = "0" ]; then
   exit 0
