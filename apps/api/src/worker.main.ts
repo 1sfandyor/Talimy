@@ -37,4 +37,10 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-void bootstrap()
+void bootstrap().catch((error: unknown) => {
+  WORKER_BOOTSTRAP_LOGGER.error(
+    `Queue worker bootstrap failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    error instanceof Error ? error.stack : undefined
+  )
+  process.exit(1)
+})

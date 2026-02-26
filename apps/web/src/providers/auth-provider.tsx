@@ -5,6 +5,7 @@ import type { Session } from "next-auth"
 import type { ReactNode } from "react"
 import { useEffect } from "react"
 
+import { NEXTAUTH_PLACEHOLDER_ENABLED } from "@/lib/auth-options"
 import { useAuthStore, type AuthUser } from "@/stores/auth-store"
 
 type AuthProviderProps = {
@@ -13,6 +14,10 @@ type AuthProviderProps = {
 }
 
 export function AuthProvider({ children, session = null }: AuthProviderProps) {
+  if (NEXTAUTH_PLACEHOLDER_ENABLED) {
+    return <>{children}</>
+  }
+
   return (
     <SessionProvider session={session}>
       <AuthStoreHydrator>{children}</AuthStoreHydrator>

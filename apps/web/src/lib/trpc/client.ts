@@ -1,5 +1,6 @@
 import { createTRPCClient, httpBatchLink } from "@trpc/client"
-import { trpcTransformer, type AppRouter } from "@talimy/trpc"
+import type { AppRouter } from "@talimy/trpc"
+import { trpcTransformer } from "@talimy/trpc/src/transformer"
 
 import { APP_LOCALE_COOKIE, getWebOrigin } from "@/config/site"
 import { getStoredAuthTokens } from "@/lib/auth"

@@ -6,4 +6,6 @@ export const AUTH_ROUTE_PATHS = {
   verifyEmail: "/verify-email",
 } as const
 
-export const NEXTAUTH_PLACEHOLDER_ENABLED = false
+// FAZA 7 yakunlangunga qadar NextAuth API route placeholder (501) holatda turadi.
+// Root AuthProvider shu flag orqali SessionProvider'ni o'chirib, public pages crash bo'lishini oldini oladi.
+export const NEXTAUTH_PLACEHOLDER_ENABLED = true

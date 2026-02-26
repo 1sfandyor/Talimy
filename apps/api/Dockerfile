@@ -16,6 +16,7 @@ RUN bun run --cwd packages/shared build
 RUN bun run --cwd packages/database build
 RUN bun run --cwd apps/api build
 RUN test -f /app/apps/api/dist/main.js
+RUN test -f /app/apps/api/dist/worker.main.js
 RUN set -eux; \
   if find /app/apps/api/dist -type f -name '*.js' -print0 | xargs -0 grep -n 'require("@/' ; then \
     echo "Alias require found in dist JS"; \
@@ -55,6 +56,7 @@ COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/database/dist ./packages/database/dist
 RUN test -d /app/apps/api/node_modules/@nestjs/common \
   && test -f /app/apps/api/dist/main.js \
+  && test -f /app/apps/api/dist/worker.main.js \
   && test -f /app/packages/shared/dist/index.js \
   && test -f /app/packages/database/dist/index.js \
   && (test -d /app/packages/shared/node_modules/zod || test -d /app/apps/api/node_modules/zod || test -d /app/node_modules/zod) \
