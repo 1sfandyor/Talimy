@@ -34,6 +34,8 @@ COPY --from=build /app/apps/web ./apps/web
 COPY --from=build /app/apps/web/.next ./apps/web/.next
 COPY --from=build /app/packages ./packages
 
+WORKDIR /app/apps/web
+
 EXPOSE 3000
 
-CMD ["node", "node_modules/next/dist/bin/next", "start", "apps/web"]
+CMD ["node", "node_modules/next/dist/bin/next", "start"]

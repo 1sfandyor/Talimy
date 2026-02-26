@@ -101,7 +101,7 @@ jobs:
           echo "ENTRYPOINT: $ENTRYPOINT"
           echo "WORKDIR: $WORKDIR"
 
-          if [[ "$CMD" != "node node_modules/next/dist/bin/next start apps/web" ]]; then
+          if [[ "$CMD" != "node node_modules/next/dist/bin/next start" ]]; then
             echo "Unexpected image CMD: '$CMD'"
             exit 1
           fi
