@@ -1,7 +1,7 @@
 import { Queue } from "bullmq"
 import { Injectable, Logger } from "@nestjs/common"
 
-type AbsentAlertJobPayload = {
+export type AbsentAlertJobPayload = {
   tenantId: string
   classId: string
   date: string

@@ -1,0 +1,1 @@
+export const TALIMY_UI_SUPPORTED_EXPORTS = ["cn", "TALIMY_UI_PACKAGE_STATUS"] as const

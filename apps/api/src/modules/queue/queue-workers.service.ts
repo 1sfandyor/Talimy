@@ -1,11 +1,21 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common"
 import { Worker, type ConnectionOptions } from "bullmq"
 
+import { AttendanceAlertsProcessor } from "./processors/attendance-alerts.processor"
 import { EmailProcessor } from "./processors/email.processor"
 import { NotificationProcessor } from "./processors/notification.processor"
 import { ReportProcessor } from "./processors/report.processor"
 import { SmsProcessor } from "./processors/sms.processor"
 import { resolveQueueConnection } from "./queue.redis"
+
+export function isQueueWorkersEnabled(): boolean {
+  const raw = process.env.QUEUE_WORKERS_ENABLED?.trim().toLowerCase()
+  if (!raw) {
+    return true
+  }
+
+  return !["0", "false", "off", "no"].includes(raw)
+}
 
 @Injectable()
 export class QueueWorkersService implements OnModuleInit, OnModuleDestroy {
@@ -13,6 +23,7 @@ export class QueueWorkersService implements OnModuleInit, OnModuleDestroy {
   private readonly workers: Worker[] = []
 
   constructor(
+    private readonly attendanceAlertsProcessor: AttendanceAlertsProcessor,
     private readonly emailProcessor: EmailProcessor,
     private readonly smsProcessor: SmsProcessor,
     private readonly notificationProcessor: NotificationProcessor,
@@ -20,10 +31,18 @@ export class QueueWorkersService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!isQueueWorkersEnabled()) {
+      this.logger.log("Queue workers disabled via QUEUE_WORKERS_ENABLED")
+      return
+    }
+
     const connection = resolveQueueConnection(this.logger)
     if (!connection) return
 
     this.workers.push(
+      this.createWorker("attendance-alerts", connection, (job: unknown) =>
+        this.attendanceAlertsProcessor.process(job as never)
+      ),
       this.createWorker("emails", connection, (job: unknown) =>
         this.emailProcessor.process(job as never)
       ),

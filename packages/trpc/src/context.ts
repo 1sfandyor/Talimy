@@ -6,6 +6,7 @@ export type RouterHandlerMap = Record<
 export type TrpcRouterHandlers = Partial<{
   auth: RouterHandlerMap
   tenant: RouterHandlerMap
+  user: RouterHandlerMap
   teacher: RouterHandlerMap
   student: RouterHandlerMap
   parent: RouterHandlerMap
@@ -18,6 +19,8 @@ export type TrpcRouterHandlers = Partial<{
   schedule: RouterHandlerMap
   ai: RouterHandlerMap
 }>
+
+export type TrpcHandlerNamespace = keyof TrpcRouterHandlers
 
 export type TrpcSessionUser = {
   id: string

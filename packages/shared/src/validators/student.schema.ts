@@ -40,7 +40,6 @@ export const createStudentSchema = z.object({
 })
 
 export const updateStudentSchema = z.object({
-  tenantId: z.string().uuid(),
   classId: z.string().uuid().optional(),
   studentId: z.string().min(2).optional(),
   gender: z.enum(["male", "female"]).optional(),

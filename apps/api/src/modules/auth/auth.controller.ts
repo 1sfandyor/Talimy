@@ -32,7 +32,7 @@ export class AuthController {
 
   @Post("logout")
   @HttpCode(200)
-  logout(@Body(new ZodValidationPipe(logoutSchema)) payload?: unknown) {
+  async logout(@Body(new ZodValidationPipe(logoutSchema)) payload?: unknown) {
     return this.authService.logout(payload as LogoutDto | undefined)
   }
 }

@@ -11,6 +11,9 @@ import type { CurrentUser } from "../decorators/current-user.decorator"
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+  private readonly allowInsecureHeaderAuth =
+    process.env.NODE_ENV !== "production" && process.env.ALLOW_INSECURE_HEADER_AUTH === "true"
+
   constructor(private readonly authService: AuthService) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -32,6 +35,10 @@ export class AuthGuard implements CanActivate {
       }
       req.tenantId = payload.tenantId
       return true
+    }
+
+    if (!this.allowInsecureHeaderAuth) {
+      throw new UnauthorizedException("Missing authentication header")
     }
 
     const userId = this.readHeader(req.headers, "x-user-id")

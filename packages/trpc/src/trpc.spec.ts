@@ -60,4 +60,28 @@ describe("@talimy/trpc proxy router", () => {
       })
     ).rejects.toThrow(/authentication required/i)
   })
+
+  it("rejects tenant mismatches for non-platform users", async () => {
+    const caller = testRouter.createCaller(
+      createTrpcContext({
+        user: {
+          id: crypto.randomUUID(),
+          tenantId: crypto.randomUUID(),
+          roles: ["school_admin"],
+        },
+        handlers: {
+          ai: {
+            chat: async () => ({ ok: true }),
+          },
+        },
+      })
+    )
+
+    await expect(
+      caller.ai.chat({
+        tenantId: crypto.randomUUID(),
+        messages: [{ role: "user", content: "hello" }],
+      })
+    ).rejects.toThrow(/tenant mismatch/i)
+  })
 })

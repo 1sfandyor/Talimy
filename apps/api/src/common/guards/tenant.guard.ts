@@ -16,9 +16,19 @@ export class TenantGuard implements CanActivate {
     const requestTenantId =
       req.params?.tenantId ?? req.query?.tenantId ?? req.body?.tenantId ?? req.tenantId
     const userTenantId = req.user?.tenantId
+    const roles = new Set(req.user?.roles ?? [])
+    const isPlatformAdmin = roles.has("platform_admin")
 
-    if (!requestTenantId || !userTenantId) {
+    if (isPlatformAdmin) {
       return true
+    }
+
+    if (!userTenantId) {
+      throw new ForbiddenException("Authenticated tenant is required")
+    }
+
+    if (!requestTenantId) {
+      throw new ForbiddenException("Tenant context is required")
     }
 
     if (requestTenantId !== userTenantId) {

@@ -11,6 +11,35 @@ import type { BillingPlan, TenantBillingView, TenantStatsView, TenantView } from
 
 @Injectable()
 export class TenantsRepository {
+  async findResolutionBySlug(
+    slug: string
+  ): Promise<{ id: string; slug: string; status: "active" | "inactive" | "suspended" } | null> {
+    const normalizedSlug = slug.trim().toLowerCase()
+    if (normalizedSlug.length === 0) {
+      return null
+    }
+
+    const [row] = await db
+      .select({
+        id: tenants.id,
+        slug: tenants.slug,
+        status: tenants.status,
+      })
+      .from(tenants)
+      .where(and(eq(tenants.slug, normalizedSlug), isNull(tenants.deletedAt)))
+      .limit(1)
+
+    if (!row) {
+      return null
+    }
+
+    return {
+      id: row.id,
+      slug: row.slug,
+      status: row.status,
+    }
+  }
+
   async list(query: ListTenantsQueryDto): Promise<{
     data: TenantView[]
     meta: { page: number; limit: number; total: number; totalPages: number }

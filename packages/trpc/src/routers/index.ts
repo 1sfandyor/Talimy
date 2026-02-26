@@ -12,10 +12,12 @@ import { scheduleRouter } from "./schedule.router"
 import { studentRouter } from "./student.router"
 import { teacherRouter } from "./teacher.router"
 import { tenantRouter } from "./tenant.router"
+import { userRouter } from "./user.router"
 
 export const appRouter = router({
   auth: authRouter,
   tenant: tenantRouter,
+  user: userRouter,
   teacher: teacherRouter,
   student: studentRouter,
   parent: parentRouter,

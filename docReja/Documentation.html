@@ -201,11 +201,11 @@ color:#2E74B5'>Deployment Stability Notes (2026-02-21)</span></b></p>
 
 <p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
 2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-</span><span style='font-size:10.0pt;color:black'>Web/API Docker runtime command standart: `bun run --cwd apps/web start`, `bun run --cwd apps/api start:prod`.</span></p>
+</span><span style='font-size:10.0pt;color:black'>Web/Platform Docker runtime command standart: `bun run --cwd apps/web start`; API runtime command: `bun run --cwd apps/api start:prod`; worker (if API image reused): `bun run --cwd apps/api start:worker:prod`.</span></p>
 
 <p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
 2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-</span><span style='font-size:10.0pt;color:black'>Build artifact check majburiy: web `.next/BUILD_ID`, api `dist/main(.js)`; Dokploy `Run Command` noto'g'ri override qilinmasin (image CMD ishlasin).</span></p>
+</span><span style='font-size:10.0pt;color:black'>Build artifact check majburiy: web `.next/BUILD_ID`, api `dist/main(.js)`; Dokploy `Run Command` noto'g'ri override qilinmasin (image CMD ishlasin). Istisno: worker service API image'ni boshqa command bilan ishlatsa aniq override kiriting.</span></p>
 
 <p class=MsoListParagraph style='margin-top:1.5pt;margin-right:0in;margin-bottom:
 2.5pt;margin-left:.5in;text-indent:-.25in'>•<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -324,7 +324,7 @@ color:#1B8A4C'>1.1 Tech Stack --- To'liq Ro'yxat</span></b></p>
   color:#222222'>AI / ML INTEGRATION</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  Provider: Anthropic Claude (Sonnet 4)</span></p>
+  color:#222222'>  Provider: Openrouter (Gemma 3)</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
   color:#222222'>  1. O'quvchi Dashboard: AI maslahat (motivatsiya, o'qish
@@ -360,7 +360,7 @@ color:#1B8A4C'>1.1 Tech Stack --- To'liq Ro'yxat</span></b></p>
   color:#222222'>  Monorepo: Turborepo 2.8 + Bun 1.3.9</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  CI/CD: GitHub Actions + Dokploy Deploy Hooks</span></p>
+  color:#222222'>  CI/CD: GitHub Actions (GHCR image build/push) + Dokploy Deploy Hooks</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
   color:#222222'>  Monitoring: Sentry + Axiom</span></p>
@@ -372,34 +372,34 @@ color:#1B8A4C'>1.1 Tech Stack --- To'liq Ro'yxat</span></b></p>
   color:#1B8A4C'>  DOKPLOY DEPLOY RUNBOOK (talimy.space)</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  1) Project: `talimy`, Git repo branch, auto-deploy hook.</span></p>
+  color:#222222'>  1) Project: `talimy`; Dokploy services use Docker Provider (GHCR image pull). GitHub Actions builds/pushes images and triggers Dokploy deploy hooks.</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  2) Service `talimy-web` (root: `apps/web`, port: 3000, run: `bun run build &amp;&amp; bun run start`).</span></p>
+  color:#222222'>  2) Service `talimy-web` (Docker Provider, image: `ghcr.io/&lt;owner&gt;/&lt;repo&gt;/web:&lt;sha|latest&gt;`, port: 3000; keep Dokploy Run Command empty if image CMD is correct).</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  3) Domains (`talimy-web`): `talimy.space`, `platform.talimy.space`, `*.talimy.space`.</span></p>
+  color:#222222'>  3) Domains (`talimy-web`): `talimy.space`, `www.talimy.space`, `*.talimy.space` (school subdomains). If platform is split, map `platform.talimy.space` to a dedicated service.</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  4) Service `talimy-api` (root: `apps/api`, port: 4000, run: `bun run build &amp;&amp; bun run start:prod`).</span></p>
+  color:#222222'>  4) Service `talimy-platform` (optional split; Docker Provider, image: `ghcr.io/&lt;owner&gt;/&lt;repo&gt;/platform:&lt;sha|latest&gt;`, domain: `platform.talimy.space`, env same scope as web).</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  5) Domain (`talimy-api`): `api.talimy.space`.</span></p>
+  color:#222222'>  5) Service `talimy-api` (Docker Provider, image: `ghcr.io/&lt;owner&gt;/&lt;repo&gt;/api:&lt;sha|latest&gt;`, domain: `api.talimy.space`, `QUEUE_WORKERS_ENABLED=false`).</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  6) Web env scope: `apps/web/.env.local` - only `NEXT_PUBLIC_*` vars.</span></p>
+  color:#222222'>  6) Service `talimy-worker` (BullMQ worker; usually reuses `api` image, no domain, Run Command: `bun run --cwd apps/api start:worker:prod`, `QUEUE_WORKERS_ENABLED=true`).</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  7) API env scope: `apps/api/.env` - `DATABASE_URL`, `REDIS_URL`, `JWT_*`, `R2_*`, `RESEND_*`, `TWILIO_*`, `ANTHROPIC_API_KEY`, `SENTRY_DSN`, `AXIOM_TOKEN`.</span></p>
+  color:#222222'>  7) Web env scope: `apps/web/.env.local` - only `NEXT_PUBLIC_*` vars (+ `NODE_ENV`, `PORT` in Dokploy service env).</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  8) SSL/Proxy: Let's Encrypt + wildcard cert check.</span></p>
+  color:#222222'>  8) API env scope: `apps/api/.env` - `DATABASE_URL`, `REDIS_URL`, `JWT_*`, `R2_*`, `RESEND_*`, `TWILIO_*`, `OPENROUTER_*`/`ANTHROPIC_API_KEY`, `SENTRY_DSN`, `AXIOM_TOKEN`, `PERMIFY_*`.</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  9) Health checks: web `/`, api `/health`; smoke tests for all subdomains.</span></p>
+  color:#222222'>  9) SSL/Proxy + Health checks: wildcard/API/platform certs; web `/`, api `/health`, worker queue-processing smoke; verify subdomain routing.</span></p>
   <p class=MsoNormal style='margin-top:1.5pt;margin-right:0in;margin-bottom:
   1.5pt;margin-left:0in'><span style='font-size:9.0pt;font-family:"Courier New";
-  color:#222222'>  10) Rollback: previous successful Dokploy release + DNS/SSL re-check.</span></p>
+  color:#222222'>  10) Rollback: previous successful Dokploy release + GHCR sha-tag re-deploy + DNS/SSL re-check.</span></p>
   </td>
  </tr>
 </table>

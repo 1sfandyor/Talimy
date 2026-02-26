@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common"
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common"
 
 import { CreateTenantDto } from "./dto/create-tenant.dto"
 import { ListTenantsQueryDto } from "./dto/list-tenants-query.dto"
@@ -9,6 +9,24 @@ import { TenantsRepository } from "./tenants.repository"
 @Injectable()
 export class TenantsService {
   constructor(private readonly repository: TenantsRepository) {}
+
+  async resolveTenantContextBySlug(
+    slug: string
+  ): Promise<{ tenantId: string; tenantSlug: string }> {
+    const resolved = await this.repository.findResolutionBySlug(slug)
+    if (!resolved) {
+      throw new NotFoundException("Tenant not found")
+    }
+
+    if (resolved.status !== "active") {
+      throw new ForbiddenException("Tenant is not active")
+    }
+
+    return {
+      tenantId: resolved.id,
+      tenantSlug: resolved.slug,
+    }
+  }
 
   list(query: ListTenantsQueryDto) {
     return this.repository.list(query)

@@ -26,6 +26,8 @@ function loadDotEnvFile(filePath) {
 }
 
 loadDotEnvFile(path.resolve(__dirname, "..", ".env"))
+loadDotEnvFile(path.resolve(__dirname, "..", "..", "web", ".env.local"))
+loadDotEnvFile(path.resolve(__dirname, "..", "..", "..", ".env"))
 
 function getArg(name, fallback = "") {
   const prefix = `--${name}=`
@@ -52,7 +54,20 @@ async function httpJson(url, init = {}) {
   } catch {
     json = null
   }
-  return { status: res.status, text, json }
+  const getSetCookie =
+    typeof res.headers.getSetCookie === "function"
+      ? res.headers.getSetCookie.bind(res.headers)
+      : null
+  const setCookies = getSetCookie ? getSetCookie() : []
+  return {
+    status: res.status,
+    statusText: res.statusText,
+    text,
+    json,
+    headers: res.headers,
+    headersMap: Object.fromEntries(res.headers.entries()),
+    setCookies,
+  }
 }
 
 function pretty(resp) {
@@ -60,6 +75,40 @@ function pretty(resp) {
     status: resp.status,
     body: resp.json ?? resp.text,
   }
+}
+
+function readFileSafe(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null
+    return fs.readFileSync(filePath, "utf8")
+  } catch {
+    return null
+  }
+}
+
+function flattenJsonKeys(input, prefix = "") {
+  if (Array.isArray(input)) {
+    return input.flatMap((value, index) =>
+      flattenJsonKeys(value, prefix ? `${prefix}[${index}]` : `[${index}]`)
+    )
+  }
+
+  if (input && typeof input === "object") {
+    return Object.entries(input).flatMap(([key, value]) =>
+      flattenJsonKeys(value, prefix ? `${prefix}.${key}` : key)
+    )
+  }
+
+  return prefix ? [prefix] : []
+}
+
+function hasPlaceholderText(resp, placeholderText) {
+  const haystack = `${resp?.text ?? ""} ${JSON.stringify(resp?.json ?? {})}`.toLowerCase()
+  return haystack.includes(String(placeholderText).toLowerCase())
+}
+
+function isAllowedStatus(status, allowed) {
+  return Array.isArray(allowed) && allowed.includes(status)
 }
 
 function extractRows(envelope) {
@@ -98,10 +147,15 @@ function assertOrThrow(condition, message, extra) {
 
 async function main() {
   const baseUrl = getArg("base-url", process.env.API_BASE_URL || "https://api.talimy.space")
+  const webBaseUrl = getArg(
+    "web-base-url",
+    process.env.WEB_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || ""
+  )
   const tenantId = getArg(
     "tenant-id",
     process.env.BRIDGE_TENANT_ID || "eddbf523-f288-402a-9a16-ef93d27aafc7"
   )
+  const tenantSlug = getArg("tenant-slug", process.env.BRIDGE_TENANT_SLUG || "smoke-school")
   const smokePassword = getArg("password", process.env.SMOKE_PASSWORD || "Password123")
   const platformEmail = getArg(
     "platform-email",
@@ -120,6 +174,20 @@ async function main() {
       process.env.TWILIO_PHONE_NUMBER
     )
   )
+  const strictWebTrpc = getBoolArg("strict-web-trpc", false)
+  const strictWebUpload = getBoolArg(
+    "strict-web-upload",
+    Boolean(
+      process.env.R2_ACCOUNT_ID &&
+      process.env.R2_ACCESS_KEY_ID &&
+      process.env.R2_SECRET_ACCESS_KEY &&
+      process.env.R2_BUCKET_NAME
+    )
+  )
+  const strictPhase3 = getBoolArg("strict-phase3", false)
+  const apiLogFile = getArg("api-log-file", process.env.SMOKE_API_LOG_FILE || "")
+  const workerLogFile = getArg("worker-log-file", process.env.SMOKE_WORKER_LOG_FILE || "")
+  const strictWorkerTopology = getBoolArg("strict-worker-topology", false)
 
   const results = []
   const pushCase = (t) => {
@@ -127,7 +195,9 @@ async function main() {
     return t
   }
 
-  console.log(`[smoke:integration] base=${baseUrl} tenant=${tenantId}`)
+  console.log(
+    `[smoke:integration] api=${baseUrl} web=${webBaseUrl || "(skip phase3 web)"} tenant=${tenantId}`
+  )
 
   let token = ""
   let createdNoticeId = ""
@@ -1172,6 +1242,419 @@ async function main() {
         })
         assertOrThrow(tenantsResp.status === 200, "Tenants list expected 200", pretty(tenantsResp))
         markOk(t, "POST /auth/login + GET /api/tenants -> 200")
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Queue worker topology (2.23.5) static readiness
+  {
+    const t = pushCase(createCase("queue-worker-topology-static"))
+    try {
+      const apiRoot = path.resolve(__dirname, "..")
+      const workerMainPath = path.join(apiRoot, "src", "worker.main.ts")
+      const workerModulePath = path.join(apiRoot, "src", "worker.module.ts")
+      const queueWorkersServicePath = path.join(
+        apiRoot,
+        "src",
+        "modules",
+        "queue",
+        "queue-workers.service.ts"
+      )
+      const packageJsonPath = path.join(apiRoot, "package.json")
+
+      assertOrThrow(fs.existsSync(workerMainPath), "Missing worker.main.ts", { workerMainPath })
+      assertOrThrow(fs.existsSync(workerModulePath), "Missing worker.module.ts", {
+        workerModulePath,
+      })
+      assertOrThrow(fs.existsSync(queueWorkersServicePath), "Missing queue-workers.service.ts", {
+        queueWorkersServicePath,
+      })
+
+      const queueWorkersServiceSource = readFileSafe(queueWorkersServicePath) || ""
+      const workerMainSource = readFileSafe(workerMainPath) || ""
+      const packageJson = JSON.parse(readFileSafe(packageJsonPath) || "{}")
+
+      assertOrThrow(
+        queueWorkersServiceSource.includes("QUEUE_WORKERS_ENABLED"),
+        "QUEUE_WORKERS_ENABLED toggle is missing in queue-workers.service.ts"
+      )
+      assertOrThrow(
+        workerMainSource.includes("createApplicationContext"),
+        "worker.main.ts should bootstrap Nest application context"
+      )
+      assertOrThrow(
+        packageJson?.scripts?.["dev:worker"] && packageJson?.scripts?.["start:worker"],
+        "Worker scripts are missing in apps/api/package.json",
+        { scripts: packageJson?.scripts }
+      )
+
+      markOk(t, "worker entrypoint + toggle + package scripts present")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Queue worker topology (2.23.5) runtime log evidence (optional, for local dual-process smoke)
+  {
+    const t = pushCase(createCase("queue-worker-topology-runtime"))
+    try {
+      if (!apiLogFile || !workerLogFile) {
+        if (strictWorkerTopology) {
+          throw new Error(
+            "Provide --api-log-file and --worker-log-file for strict worker topology verification"
+          )
+        }
+        markSkip(t, "api/worker log file paths not provided")
+      } else {
+        const apiLog = readFileSafe(apiLogFile)
+        const workerLog = readFileSafe(workerLogFile)
+        assertOrThrow(apiLog !== null, "API log file not found/readable", { apiLogFile })
+        assertOrThrow(workerLog !== null, "Worker log file not found/readable", { workerLogFile })
+
+        assertOrThrow(
+          apiLog.includes("Queue workers disabled via QUEUE_WORKERS_ENABLED"),
+          "API log missing worker-disabled evidence",
+          { apiLogFile }
+        )
+        assertOrThrow(
+          !apiLog.includes("Queue worker started:"),
+          "API log should not start workers when QUEUE_WORKERS_ENABLED=false",
+          { apiLogFile }
+        )
+        assertOrThrow(
+          workerLog.includes("Queue worker runtime started"),
+          "Worker log missing runtime startup evidence",
+          { workerLogFile }
+        )
+        assertOrThrow(
+          workerLog.includes("Queue worker started:"),
+          "Worker log missing queue worker start evidence",
+          { workerLogFile }
+        )
+
+        markOk(t, "api log disables workers; worker log starts dedicated consumers")
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // FAZA 3 static artifact checks (providers/stores/hooks/nav/i18n/routes)
+  {
+    const t = pushCase(createCase("phase3-artifacts-static"))
+    try {
+      const repoRoot = path.resolve(__dirname, "..", "..", "..")
+      const requiredPaths = [
+        "apps/web/proxy.ts",
+        "apps/web/next.config.ts",
+        "apps/web/src/app/layout.tsx",
+        "apps/web/src/app/api/trpc/[trpc]/route.ts",
+        "apps/web/src/app/api/upload/route.ts",
+        "apps/web/src/providers/auth-provider.tsx",
+        "apps/web/src/providers/query-provider.tsx",
+        "apps/web/src/providers/theme-provider.tsx",
+        "apps/web/src/providers/intl-provider.tsx",
+        "apps/web/src/providers/socket-provider.tsx",
+        "apps/web/src/stores/auth-store.ts",
+        "apps/web/src/stores/sidebar-store.ts",
+        "apps/web/src/stores/notification-store.ts",
+        "apps/web/src/stores/theme-store.ts",
+        "apps/web/src/hooks/use-auth.ts",
+        "apps/web/src/hooks/use-tenant.ts",
+        "apps/web/src/hooks/use-permissions.ts",
+        "apps/web/src/hooks/use-socket.ts",
+        "apps/web/src/hooks/use-notifications.ts",
+        "apps/web/src/hooks/use-sidebar.ts",
+        "apps/web/src/config/navigation/platform-nav.ts",
+        "apps/web/src/config/navigation/admin-nav.ts",
+        "apps/web/src/config/navigation/teacher-nav.ts",
+        "apps/web/src/config/navigation/student-nav.ts",
+        "apps/web/src/config/navigation/parent-nav.ts",
+        "apps/web/src/config/navigation/types.ts",
+        "apps/web/src/i18n/request.ts",
+        "apps/web/src/i18n/routing.ts",
+        "apps/web/src/messages/uz.json",
+        "apps/web/src/messages/tr.json",
+        "apps/web/src/messages/en.json",
+        "apps/web/src/messages/ru.json",
+      ]
+
+      const missing = requiredPaths.filter(
+        (relativePath) => !fs.existsSync(path.join(repoRoot, relativePath))
+      )
+      assertOrThrow(missing.length === 0, "Missing phase3 artifact files", { missing })
+
+      markOk(t, `phase3 files present (${requiredPaths.length})`)
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // FAZA 3 i18n message integrity (same keyset across locales, >=200 keys)
+  {
+    const t = pushCase(createCase("phase3-i18n-keyset"))
+    try {
+      const repoRoot = path.resolve(__dirname, "..", "..", "..")
+      const localeCodes = ["uz", "tr", "en", "ru"]
+      const localeMaps = {}
+
+      for (const localeCode of localeCodes) {
+        const filePath = path.join(repoRoot, "apps", "web", "src", "messages", `${localeCode}.json`)
+        const parsed = JSON.parse(readFileSafe(filePath) || "{}")
+        const keys = flattenJsonKeys(parsed)
+          .filter((key) => !key.includes("["))
+          .sort()
+        localeMaps[localeCode] = {
+          filePath,
+          keys,
+          keySet: new Set(keys),
+        }
+      }
+
+      const baseLocale = localeMaps.uz
+      assertOrThrow(
+        baseLocale.keys.length >= 200,
+        "uz.json should contain at least 200 message keys",
+        {
+          count: baseLocale.keys.length,
+        }
+      )
+
+      for (const localeCode of localeCodes.slice(1)) {
+        const current = localeMaps[localeCode]
+        assertOrThrow(
+          current.keys.length === baseLocale.keys.length,
+          `Message key count mismatch for ${localeCode}`,
+          {
+            baseCount: baseLocale.keys.length,
+            currentCount: current.keys.length,
+          }
+        )
+        const missingInCurrent = baseLocale.keys.filter((key) => !current.keySet.has(key))
+        const extraInCurrent = current.keys.filter((key) => !baseLocale.keySet.has(key))
+        assertOrThrow(
+          missingInCurrent.length === 0 && extraInCurrent.length === 0,
+          `Message keyset mismatch for ${localeCode}`,
+          {
+            missingInCurrent: missingInCurrent.slice(0, 20),
+            extraInCurrent: extraInCurrent.slice(0, 20),
+          }
+        )
+      }
+
+      markOk(t, `i18n keysets aligned across locales (${baseLocale.keys.length} keys)`)
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // FAZA 3 web runtime smoke (proxy + API route wiring)
+  {
+    const t = pushCase(createCase("phase3-web-proxy-host-matrix"))
+    try {
+      if (!webBaseUrl) {
+        markSkip(t, "WEB_BASE_URL / --web-base-url not provided")
+      } else {
+        const platformHome = await httpJson(`${webBaseUrl}/`, {
+          redirect: "manual",
+          headers: { "x-forwarded-host": "platform.talimy.space" },
+        })
+        assertOrThrow(
+          [307, 308].includes(platformHome.status),
+          "platform host / should redirect",
+          pretty(platformHome)
+        )
+        assertOrThrow(
+          (platformHome.headersMap.location || "").includes("/platform"),
+          "platform host redirect should target /platform",
+          platformHome.headersMap
+        )
+
+        const publicProtected = await httpJson(`${webBaseUrl}/admin/dashboard`, {
+          redirect: "manual",
+          headers: { "x-forwarded-host": "talimy.space" },
+        })
+        assertOrThrow(
+          [307, 308].includes(publicProtected.status),
+          "public host /admin should redirect",
+          pretty(publicProtected)
+        )
+        assertOrThrow(
+          (publicProtected.headersMap.location || "").includes("/login"),
+          "public host /admin redirect should target /login",
+          publicProtected.headersMap
+        )
+
+        const schoolProtected = await httpJson(`${webBaseUrl}/admin/dashboard`, {
+          redirect: "manual",
+          headers: { "x-forwarded-host": `${tenantSlug}.talimy.space` },
+        })
+        assertOrThrow(
+          [307, 308].includes(schoolProtected.status),
+          "school host protected route without auth should redirect",
+          pretty(schoolProtected)
+        )
+        assertOrThrow(
+          (schoolProtected.headersMap.location || "").includes("/login"),
+          "school host protected route redirect should target /login",
+          schoolProtected.headersMap
+        )
+
+        const schoolPlatform = await httpJson(`${webBaseUrl}/platform`, {
+          redirect: "manual",
+          headers: { "x-forwarded-host": `${tenantSlug}.talimy.space` },
+        })
+        assertOrThrow(
+          [307, 308].includes(schoolPlatform.status),
+          "school host /platform should redirect",
+          pretty(schoolPlatform)
+        )
+        assertOrThrow(
+          (schoolPlatform.headersMap.location || "").includes("/login"),
+          "school host /platform redirect should target /login",
+          schoolPlatform.headersMap
+        )
+
+        markOk(t, "platform/public/school host matrix redirects -> 307/308")
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  {
+    const t = pushCase(createCase("phase3-web-i18n-locale-cookie"))
+    try {
+      if (!webBaseUrl) {
+        markSkip(t, "WEB_BASE_URL / --web-base-url not provided")
+      } else {
+        const resp = await httpJson(`${webBaseUrl}/login`, {
+          redirect: "manual",
+          headers: {
+            "x-forwarded-host": "talimy.space",
+            "accept-language": "tr-TR,tr;q=0.9,en;q=0.8",
+          },
+        })
+
+        assertOrThrow(
+          [200, 307, 308].includes(resp.status),
+          "Web login route should respond",
+          pretty(resp)
+        )
+        const localeHeader = resp.headersMap["x-locale"] || ""
+        if (strictPhase3) {
+          assertOrThrow(
+            localeHeader === "tr",
+            "Expected x-locale=tr in strict phase3 mode",
+            resp.headersMap
+          )
+        }
+
+        const setCookieJoined = [...resp.setCookies, resp.headersMap["set-cookie"] || ""].join("; ")
+        assertOrThrow(
+          setCookieJoined.includes("NEXT_LOCALE=") || !strictPhase3,
+          "Expected NEXT_LOCALE cookie in strict phase3 mode",
+          { setCookies: resp.setCookies, setCookie: resp.headersMap["set-cookie"] }
+        )
+
+        markOk(
+          t,
+          `web locale detection responded ${resp.status}${localeHeader ? ` (x-locale=${localeHeader})` : ""}`
+        )
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  {
+    const t = pushCase(createCase("phase3-web-upload-proxy"))
+    try {
+      if (!webBaseUrl) {
+        markSkip(t, "WEB_BASE_URL / --web-base-url not provided")
+      } else {
+        const uploadResp = await httpJson(`${webBaseUrl}/api/upload?mode=signed-url`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tenant-slug": tenantSlug,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            tenantId,
+            fileName: "smoke-phase3.txt",
+            contentType: "text/plain",
+            folder: "smoke",
+          }),
+        })
+
+        assertOrThrow(
+          !hasPlaceholderText(uploadResp, "Upload route proxy is not wired yet"),
+          "Web upload route returned placeholder response",
+          pretty(uploadResp)
+        )
+
+        if (strictWebUpload || strictPhase3) {
+          assertOrThrow(
+            uploadResp.status === 200 || uploadResp.status === 201,
+            "Strict web upload smoke expects signed-url success",
+            pretty(uploadResp)
+          )
+        } else {
+          assertOrThrow(
+            isAllowedStatus(
+              uploadResp.status,
+              [200, 201, 400, 401, 403, 404, 405, 422, 500, 502, 503]
+            ),
+            "Unexpected web upload proxy status",
+            pretty(uploadResp)
+          )
+        }
+
+        markOk(t, `POST web /api/upload?mode=signed-url -> ${uploadResp.status}`)
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  {
+    const t = pushCase(createCase("phase3-web-trpc-proxy"))
+    try {
+      if (!webBaseUrl) {
+        markSkip(t, "WEB_BASE_URL / --web-base-url not provided")
+      } else {
+        const trpcResp = await httpJson(`${webBaseUrl}/api/trpc/auth.login`, {
+          method: "GET",
+          headers: {
+            "x-tenant-slug": tenantSlug,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+
+        assertOrThrow(
+          !hasPlaceholderText(trpcResp, "tRPC route is not wired yet"),
+          "Web tRPC route returned placeholder response",
+          pretty(trpcResp)
+        )
+
+        if (strictWebTrpc || strictPhase3) {
+          assertOrThrow(
+            ![404, 405, 501, 502].includes(trpcResp.status),
+            "Strict web tRPC smoke expects upstream tRPC handler availability",
+            pretty(trpcResp)
+          )
+        } else {
+          assertOrThrow(
+            trpcResp.status !== 501,
+            "Web tRPC route should not return placeholder 501",
+            pretty(trpcResp)
+          )
+        }
+
+        markOk(t, `GET web /api/trpc/auth.login -> ${trpcResp.status}`)
       }
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`

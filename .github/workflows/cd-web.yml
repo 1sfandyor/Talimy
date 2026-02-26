@@ -89,10 +89,33 @@ jobs:
     steps:
       - name: Trigger Dokploy deploy hook
         env:
-          DOKPLOY_DEPLOY_HOOK: ${{ secrets.DOKPLOY_WEB_DEPLOY_HOOK }}
+          DOKPLOY_WEB_DEPLOY_HOOK: ${{ secrets.DOKPLOY_WEB_DEPLOY_HOOK }}
         run: |
-          if [ -z "$DOKPLOY_DEPLOY_HOOK" ]; then
-            echo "DOKPLOY_WEB_DEPLOY_HOOK is not set. Skipping deploy trigger."
-            exit 0
-          fi
-          curl -fsSL -X POST "$DOKPLOY_DEPLOY_HOOK"
+          sanitize_hook() {
+            printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//'
+          }
+
+          trigger_hook() {
+            local hook_name="$1"
+            local hook_value="$2"
+            local hook
+            hook="$(sanitize_hook "$hook_value")"
+
+            if [ -z "$hook" ]; then
+              echo "${hook_name} is not set. Skipping deploy trigger."
+              return 0
+            fi
+
+            case "$hook" in
+              http://*|https://*) ;;
+              *)
+                echo "${hook_name} is not a valid http(s) URL."
+                exit 1
+                ;;
+            esac
+
+            echo "Triggering ${hook_name}..."
+            curl -fsSL -X POST "$hook"
+          }
+
+          trigger_hook "DOKPLOY_WEB_DEPLOY_HOOK" "$DOKPLOY_WEB_DEPLOY_HOOK"

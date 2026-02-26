@@ -63,7 +63,7 @@ export class AuthService {
 
   async refresh(payload: RefreshTokenDto): Promise<AuthSession> {
     const tokenPayload = this.tokenService.verifyRefreshTokenPayload(payload.refreshToken)
-    if (this.store.isRefreshJtiRevoked(tokenPayload.jti)) {
+    if (await this.store.isRefreshJtiRevoked(tokenPayload.jti)) {
       throw new UnauthorizedException("Refresh token has been revoked")
     }
 
@@ -72,7 +72,7 @@ export class AuthService {
       throw new UnauthorizedException("User not found for refresh token")
     }
 
-    this.store.revokeRefreshJti(tokenPayload.jti)
+    await this.store.revokeRefreshJti(tokenPayload.jti)
     return this.tokenService.createSession({
       sub: user.id,
       email: user.email,
@@ -82,12 +82,12 @@ export class AuthService {
     })
   }
 
-  logout(payload?: LogoutDto): { success: true } {
+  async logout(payload?: LogoutDto): Promise<{ loggedOut: true }> {
     if (payload?.refreshToken) {
       const tokenPayload = this.tokenService.verifyRefreshTokenPayload(payload.refreshToken)
-      this.store.revokeRefreshJti(tokenPayload.jti)
+      await this.store.revokeRefreshJti(tokenPayload.jti)
     }
-    return { success: true }
+    return { loggedOut: true }
   }
 
   verifyAccessToken(token: string): AuthIdentity {

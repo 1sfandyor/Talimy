@@ -12,6 +12,23 @@ export class TransformInterceptor<T> implements NestInterceptor<T, { success: tr
     _context: ExecutionContext,
     next: CallHandler<T>
   ): Observable<{ success: true; data: T }> {
-    return next.handle().pipe(map((data) => ({ success: true as const, data })))
+    return next
+      .handle()
+      .pipe(
+        map((data) =>
+          this.isSuccessEnvelope(data)
+            ? (data as { success: true; data: T })
+            : { success: true as const, data }
+        )
+      )
+  }
+
+  private isSuccessEnvelope(value: unknown): value is { success: true; data: unknown } {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false
+    }
+
+    const record = value as Record<string, unknown>
+    return record.success === true && ("data" in record || "meta" in record)
   }
 }

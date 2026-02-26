@@ -2,11 +2,16 @@ import { db, users } from "@talimy/database"
 import { and, eq, isNull } from "drizzle-orm"
 import { Injectable } from "@nestjs/common"
 
+import { getAuthConfig } from "@/config/auth.config"
+import { CacheService } from "@/modules/cache/cache.service"
+
 import type { StoredUser } from "./auth.types"
 
 @Injectable()
 export class AuthStoreRepository {
-  private readonly revokedRefreshTokenJti = new Set<string>()
+  private readonly refreshTokenTtlSec = getAuthConfig().refreshTokenTtlSec
+
+  constructor(private readonly cacheService: CacheService) {}
 
   async getUserByEmail(email: string): Promise<StoredUser | null> {
     const normalizedEmail = this.normalizeEmail(email)
@@ -64,15 +69,24 @@ export class AuthStoreRepository {
     })
   }
 
-  revokeRefreshJti(jti: string): void {
-    this.revokedRefreshTokenJti.add(jti)
+  async revokeRefreshJti(jti: string): Promise<void> {
+    await this.cacheService.setJson(
+      this.revocationKey(jti),
+      { revoked: true },
+      this.refreshTokenTtlSec
+    )
   }
 
-  isRefreshJtiRevoked(jti: string): boolean {
-    return this.revokedRefreshTokenJti.has(jti)
+  async isRefreshJtiRevoked(jti: string): Promise<boolean> {
+    const cached = await this.cacheService.getJson<{ revoked: boolean }>(this.revocationKey(jti))
+    return cached?.revoked === true
   }
 
   private normalizeEmail(email: string): string {
     return email.toLowerCase()
+  }
+
+  private revocationKey(jti: string): string {
+    return `auth:refresh-revoked:${jti}`
   }
 }
