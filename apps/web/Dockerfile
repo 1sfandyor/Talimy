@@ -1,4 +1,5 @@
 ARG BUN_IMAGE=oven/bun:1.3.9
+ARG NODE_IMAGE=node:20-bookworm-slim
 
 FROM ${BUN_IMAGE} AS base
 WORKDIR /app
@@ -20,7 +21,7 @@ RUN bun run --cwd packages/shared build
 RUN bun run --cwd apps/web build
 RUN test -f /app/apps/web/.next/BUILD_ID
 
-FROM ${BUN_IMAGE} AS runner
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -35,4 +36,4 @@ COPY --from=build /app/packages ./packages
 
 EXPOSE 3000
 
-CMD ["bun", "run", "--cwd", "apps/web", "start"]
+CMD ["node", "node_modules/next/dist/bin/next", "start", "apps/web"]
