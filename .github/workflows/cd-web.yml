@@ -99,7 +99,7 @@ jobs:
           echo "ENTRYPOINT: $ENTRYPOINT"
           echo "WORKDIR: $WORKDIR"
 
-          if [[ "$CMD" != "bun run --smol --cwd apps/web start" ]]; then
+          if [[ "$CMD" != "bun run --cwd apps/web start" ]]; then
             echo "Unexpected image CMD: '$CMD'"
             exit 1
           fi
