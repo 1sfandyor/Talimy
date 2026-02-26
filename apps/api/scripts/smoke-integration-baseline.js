@@ -1,6 +1,31 @@
 #!/usr/bin/env node
 
 /* eslint-disable no-console */
+const fs = require("node:fs")
+const path = require("node:path")
+
+function loadDotEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return
+  const content = fs.readFileSync(filePath, "utf8")
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith("#")) continue
+    const eqIndex = line.indexOf("=")
+    if (eqIndex <= 0) continue
+    const key = line.slice(0, eqIndex).trim()
+    if (!key || process.env[key]) continue
+    let value = line.slice(eqIndex + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+    process.env[key] = value
+  }
+}
+
+loadDotEnvFile(path.resolve(__dirname, "..", ".env"))
 
 function getArg(name, fallback = "") {
   const prefix = `--${name}=`
