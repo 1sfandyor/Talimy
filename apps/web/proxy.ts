@@ -84,7 +84,7 @@ export function proxy(request: NextRequest) {
 }
 
 function resolveHostScope(request: NextRequest): HostScope {
-  const rawHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? ""
+  const rawHost = resolveRequestHost(request)
   const hostname = rawHost.toLowerCase().split(":")[0] ?? ""
 
   if (hostname === "api.talimy.space") {
@@ -120,6 +120,57 @@ function resolveHostScope(request: NextRequest): HostScope {
   }
 
   return { kind: "public" }
+}
+
+function resolveRequestHost(request: NextRequest): string {
+  const candidates = [
+    ...splitHostHeaderValues(request.headers.get("x-forwarded-host")),
+    ...extractForwardedHeaderHosts(request.headers.get("forwarded")),
+    ...splitHostHeaderValues(request.headers.get("host")),
+  ]
+
+  const preferred =
+    candidates.find((candidate) => isRecognizedTenantHost(candidate)) ?? candidates[0] ?? ""
+  return preferred
+}
+
+function splitHostHeaderValues(rawHeader: string | null): string[] {
+  if (!rawHeader) {
+    return []
+  }
+
+  return rawHeader
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function extractForwardedHeaderHosts(rawHeader: string | null): string[] {
+  if (!rawHeader) {
+    return []
+  }
+
+  return rawHeader
+    .split(",")
+    .map((segment) => {
+      const match = segment.match(/(?:^|;)\s*host="?([^";,]+)"?/i)
+      return match?.[1]?.trim() ?? ""
+    })
+    .filter(Boolean)
+}
+
+function isRecognizedTenantHost(rawHost: string): boolean {
+  const hostname = rawHost.toLowerCase().split(":")[0] ?? ""
+  return (
+    hostname === "talimy.space" ||
+    hostname === "www.talimy.space" ||
+    hostname === "platform.talimy.space" ||
+    hostname === "api.talimy.space" ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".talimy.space") ||
+    hostname.endsWith(".localhost")
+  )
 }
 
 function isSchoolPanelPath(pathname: string): boolean {
@@ -228,3 +279,5 @@ function redirect(request: NextRequest, pathname: string): NextResponse {
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)"],
 }
+
+export default proxy

@@ -2,7 +2,12 @@ import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } f
 
 import { getPermifyConfig } from "@/config/permify.config"
 
-import { createPermifyClient, PERMIFY_CHECK_RESULT, type PermifyClient } from "./permify-sdk"
+import {
+  createPermifyClient,
+  PERMIFY_CHECK_RESULT,
+  type PermifyClient,
+  type PermifyPermissionCheckResponse,
+} from "./permify-sdk"
 
 type GenderEntity = "student" | "teacher"
 type GenderAction = "list" | "create" | "update"
@@ -62,37 +67,7 @@ export class PermifyPdpService {
         })
       }
 
-      const response = await this.withTimeout(
-        this.getClient().permission.check({
-          tenantId: input.tenantId,
-          metadata: {
-            snapToken: "",
-            schemaVersion: this.cfg.schemaVersion ?? "",
-            depth: 20,
-          },
-          entity: {
-            type: this.toPermifyEntityType(input.entity),
-            id: this.toPermifyEntityId(input),
-          },
-          permission: this.toPermifyPermission(input.action),
-          subject: {
-            type: "user",
-            id: input.userId,
-            relation: "",
-          },
-          context: {
-            tuples: contextualTuples as [],
-            attributes: [],
-            data: {
-              userGenderScope: input.userGenderScope,
-              targetGender: input.targetGender ?? "",
-              entity: input.entity,
-              action: input.action,
-            },
-          },
-          arguments: [],
-        })
-      )
+      const response = await this.checkPermissionWithSchemaFallback(input, contextualTuples)
 
       if (response.can === PERMIFY_CHECK_RESULT.CHECK_RESULT_ALLOWED) {
         return
@@ -131,6 +106,87 @@ export class PermifyPdpService {
     })
 
     return this.client
+  }
+
+  private async checkPermissionWithSchemaFallback(
+    input: PermifyCheckInput,
+    contextualTuples: Array<{
+      entity: { type: string; id: string }
+      relation: string
+      subject: { type: string; id: string; relation: string }
+    }>
+  ): Promise<PermifyPermissionCheckResponse> {
+    const configuredSchemaVersion = this.cfg.schemaVersion ?? ""
+
+    try {
+      return await this.checkPermission(input, contextualTuples, configuredSchemaVersion)
+    } catch (error) {
+      if (!configuredSchemaVersion) {
+        throw error
+      }
+
+      const reason = error instanceof Error ? error.message : String(error)
+      if (!this.shouldRetryWithoutSchemaVersion(reason)) {
+        throw error
+      }
+
+      this.logger.warn(
+        `Permify check retrying without pinned schema version after error: ${reason}`
+      )
+      return this.checkPermission(input, contextualTuples, "")
+    }
+  }
+
+  private async checkPermission(
+    input: PermifyCheckInput,
+    contextualTuples: Array<{
+      entity: { type: string; id: string }
+      relation: string
+      subject: { type: string; id: string; relation: string }
+    }>,
+    schemaVersion: string
+  ): Promise<PermifyPermissionCheckResponse> {
+    return this.withTimeout(
+      this.getClient().permission.check({
+        tenantId: input.tenantId,
+        metadata: {
+          snapToken: "",
+          schemaVersion,
+          depth: 20,
+        },
+        entity: {
+          type: this.toPermifyEntityType(input.entity),
+          id: this.toPermifyEntityId(input),
+        },
+        permission: this.toPermifyPermission(input.action),
+        subject: {
+          type: "user",
+          id: input.userId,
+          relation: "",
+        },
+        context: {
+          tuples: contextualTuples as [],
+          attributes: [],
+          data: {
+            userGenderScope: input.userGenderScope,
+            targetGender: input.targetGender ?? "",
+            entity: input.entity,
+            action: input.action,
+          },
+        },
+        arguments: [],
+      })
+    )
+  }
+
+  private shouldRetryWithoutSchemaVersion(reason: string): boolean {
+    const normalized = reason.toLowerCase()
+    return (
+      normalized.includes("schema") ||
+      normalized.includes("snap") ||
+      normalized.includes("not found") ||
+      normalized.includes("invalid argument")
+    )
   }
 
   private async withTimeout<T>(promise: Promise<T>): Promise<T> {
