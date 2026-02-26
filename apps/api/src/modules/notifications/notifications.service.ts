@@ -12,6 +12,7 @@ import type {
 } from "./dto/send-notification.dto"
 import { NotificationsGateway } from "./notifications.gateway"
 import { EmailService } from "../email/email.service"
+import { SmsService } from "../sms/sms.service"
 
 type ActorContext = {
   id: string
@@ -45,7 +46,8 @@ export class NotificationsService {
 
   constructor(
     private readonly gateway: NotificationsGateway,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly smsService: SmsService
   ) {}
 
   async list(actor: ActorContext, query: NotificationsQueryDto) {
@@ -304,10 +306,21 @@ export class NotificationsService {
   private async dispatchSms(recipients: NotificationRecipient[], message: string): Promise<number> {
     const eligible = recipients.filter((recipient) => Boolean(recipient.phone))
     if (eligible.length === 0) return 0
-
-    this.logger.log(`SMS notification dispatch requested for ${eligible.length} recipient(s)`)
-    this.logger.debug(`SMS payload preview: ${message.slice(0, 120)}`)
-    return eligible.length
+    const tenantId = eligible[0]?.tenantId
+    if (!tenantId) return 0
+    try {
+      return await this.smsService.sendNotificationSms({
+        tenantId,
+        to: eligible.map((recipient) => recipient.phone!).filter(Boolean),
+        title: "Notification",
+        message,
+      })
+    } catch (error) {
+      this.logger.error(
+        `SMS notification dispatch failed: ${error instanceof Error ? error.message : "unknown error"}`
+      )
+      return 0
+    }
   }
 
   private async countUnreadForUser(tenantId: string, userId: string): Promise<number> {

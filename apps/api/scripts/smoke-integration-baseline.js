@@ -87,6 +87,14 @@ async function main() {
     "strict-email",
     Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL)
   )
+  const strictSms = getBoolArg(
+    "strict-sms",
+    Boolean(
+      process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_PHONE_NUMBER
+    )
+  )
 
   const results = []
   const pushCase = (t) => {
@@ -893,6 +901,65 @@ async function main() {
         markOk(
           t,
           `POST /notifications/send (email channel) -> 200 (emailDispatched=${sendData.emailDispatched})`
+        )
+      }
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // SMS runtime (via notifications sms channel)
+  {
+    const t = pushCase(createCase("sms-runtime"))
+    try {
+      assertOrThrow(token, "Missing auth token from register")
+      assertOrThrow(currentUserId, "Missing current user id from register token")
+
+      const sendResp = await httpJson(`${baseUrl}/api/notifications/send`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          recipientUserIds: [currentUserId],
+          title: "integration smoke sms notification",
+          message: "integration smoke sms message",
+          channels: ["sms"],
+        }),
+      })
+      assertOrThrow(
+        sendResp.status === 200 || sendResp.status === 201,
+        "Notifications sms send expected 200/201",
+        pretty(sendResp)
+      )
+      const sendData = successData(sendResp.json)
+      assertOrThrow(
+        typeof sendData?.smsDispatched === "number",
+        "Missing smsDispatched count",
+        pretty(sendResp)
+      )
+
+      if (strictSms) {
+        assertOrThrow(sendData.smsDispatched > 0, "Expected smsDispatched > 0 (strict sms mode)", {
+          response: pretty(sendResp),
+          smsDispatched: sendData.smsDispatched,
+        })
+        markOk(
+          t,
+          `POST /notifications/send (sms channel) -> 200 (smsDispatched=${sendData.smsDispatched})`
+        )
+      } else if (
+        !process.env.TWILIO_ACCOUNT_SID ||
+        !process.env.TWILIO_AUTH_TOKEN ||
+        !process.env.TWILIO_PHONE_NUMBER
+      ) {
+        markSkip(
+          t,
+          `TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER not configured for strict dispatch verification (smsDispatched=${sendData.smsDispatched})`
+        )
+      } else {
+        markOk(
+          t,
+          `POST /notifications/send (sms channel) -> 200 (smsDispatched=${sendData.smsDispatched})`
         )
       }
     } catch (error) {
