@@ -1,0 +1,12 @@
+{
+  "extends": "../config-typescript/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@talimy/trpc": ["./src/index.ts"],
+      "@talimy/trpc/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.spec.ts"]
+}

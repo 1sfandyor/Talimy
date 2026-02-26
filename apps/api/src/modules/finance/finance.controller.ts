@@ -22,24 +22,42 @@ import { CreateFeeStructureDto, UpdateFeeStructureDto } from "./dto/fee-structur
 import { CreateInvoiceDto } from "./dto/create-invoice.dto"
 import { CreatePaymentDto, UpdatePaymentDto } from "./dto/create-payment.dto"
 import { CreatePaymentPlanDto, UpdatePaymentPlanDto } from "./dto/payment-plan.dto"
+import { CacheService } from "../cache/cache.service"
+import {
+  CACHE_TTLS,
+  financeCachePrefix,
+  financeOverviewCacheKey,
+  financePaymentsSummaryCacheKey,
+} from "../cache/cache.keys"
 
 @Controller("finance")
 @UseGuards(AuthGuard, RolesGuard, TenantGuard)
 @Roles("platform_admin", "school_admin")
 export class FinanceController {
-  constructor(private readonly financeService: FinanceService) {}
+  constructor(
+    private readonly financeService: FinanceService,
+    private readonly cacheService: CacheService
+  ) {}
   private static readonly idParamSchema = z.object({ id: z.string().uuid() })
 
   @Get("overview")
   getOverview(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
     const query = queryInput as { tenantId: string }
-    return this.financeService.getOverview(query.tenantId)
+    return this.cacheService.wrapJson(
+      financeOverviewCacheKey(query.tenantId),
+      CACHE_TTLS.financeOverviewSeconds,
+      () => this.financeService.getOverview(query.tenantId)
+    )
   }
 
   @Get("payments/summary")
   getPaymentsSummary(@Query(new ZodValidationPipe(userTenantQuerySchema)) queryInput: unknown) {
     const query = queryInput as { tenantId: string }
-    return this.financeService.getPaymentsSummary(query.tenantId)
+    return this.cacheService.wrapJson(
+      financePaymentsSummaryCacheKey(query.tenantId),
+      CACHE_TTLS.financePaymentsSummarySeconds,
+      () => this.financeService.getPaymentsSummary(query.tenantId)
+    )
   }
 
   @Get("fee-structures")
@@ -62,7 +80,10 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   createFeeStructure(@Body(new ZodValidationPipe(createFeeStructureSchema)) payloadInput: unknown) {
     const payload = payloadInput as CreateFeeStructureDto
-    return this.financeService.createFeeStructure(payload)
+    return this.financeService.createFeeStructure(payload).then(async (created) => {
+      await this.invalidateFinanceCache(payload.tenantId)
+      return created
+    })
   }
 
   @Patch("fee-structures/:id")
@@ -75,7 +96,12 @@ export class FinanceController {
     const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdateFeeStructureDto
-    return this.financeService.updateFeeStructure(query.tenantId, params.id, payload)
+    return this.financeService
+      .updateFeeStructure(query.tenantId, params.id, payload)
+      .then(async (updated) => {
+        await this.invalidateFinanceCache(query.tenantId)
+        return updated
+      })
   }
 
   @Delete("fee-structures/:id")
@@ -86,7 +112,12 @@ export class FinanceController {
   ) {
     const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.financeService.deleteFeeStructure(query.tenantId, params.id)
+    return this.financeService
+      .deleteFeeStructure(query.tenantId, params.id)
+      .then(async (result) => {
+        await this.invalidateFinanceCache(query.tenantId)
+        return result
+      })
   }
 
   @Get("payment-plans")
@@ -99,7 +130,10 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   createPaymentPlan(@Body(new ZodValidationPipe(createPaymentPlanSchema)) payloadInput: unknown) {
     const payload = payloadInput as CreatePaymentPlanDto
-    return this.financeService.createPaymentPlan(payload)
+    return this.financeService.createPaymentPlan(payload).then(async (created) => {
+      await this.invalidateFinanceCache(payload.tenantId)
+      return created
+    })
   }
 
   @Patch("payment-plans/:id")
@@ -112,7 +146,12 @@ export class FinanceController {
     const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdatePaymentPlanDto
-    return this.financeService.updatePaymentPlan(query.tenantId, params.id, payload)
+    return this.financeService
+      .updatePaymentPlan(query.tenantId, params.id, payload)
+      .then(async (updated) => {
+        await this.invalidateFinanceCache(query.tenantId)
+        return updated
+      })
   }
 
   @Delete("payment-plans/:id")
@@ -123,7 +162,10 @@ export class FinanceController {
   ) {
     const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
-    return this.financeService.deletePaymentPlan(query.tenantId, params.id)
+    return this.financeService.deletePaymentPlan(query.tenantId, params.id).then(async (result) => {
+      await this.invalidateFinanceCache(query.tenantId)
+      return result
+    })
   }
 
   @Get("payments")
@@ -136,7 +178,10 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   createPayment(@Body(new ZodValidationPipe(createPaymentSchema)) payloadInput: unknown) {
     const payload = payloadInput as CreatePaymentDto
-    return this.financeService.createPayment(payload)
+    return this.financeService.createPayment(payload).then(async (created) => {
+      await this.invalidateFinanceCache(payload.tenantId)
+      return created
+    })
   }
 
   @Patch("payments/:id")
@@ -149,7 +194,12 @@ export class FinanceController {
     const params = paramsInput as { id: string }
     const query = queryInput as { tenantId: string }
     const payload = payloadInput as UpdatePaymentDto
-    return this.financeService.updatePayment(query.tenantId, params.id, payload)
+    return this.financeService
+      .updatePayment(query.tenantId, params.id, payload)
+      .then(async (updated) => {
+        await this.invalidateFinanceCache(query.tenantId)
+        return updated
+      })
   }
 
   @Get("invoices")
@@ -162,6 +212,13 @@ export class FinanceController {
   @Roles("platform_admin", "school_admin")
   createInvoice(@Body(new ZodValidationPipe(createInvoiceSchema)) payloadInput: unknown) {
     const payload = payloadInput as CreateInvoiceDto
-    return this.financeService.createInvoice(payload)
+    return this.financeService.createInvoice(payload).then(async (created) => {
+      await this.invalidateFinanceCache(payload.tenantId)
+      return created
+    })
+  }
+
+  private async invalidateFinanceCache(tenantId: string): Promise<void> {
+    await this.cacheService.delByPrefix(financeCachePrefix(tenantId))
   }
 }

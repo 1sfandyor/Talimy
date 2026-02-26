@@ -14,14 +14,17 @@ import { AuthModule } from "./modules/auth/auth.module"
 import { AssignmentsModule } from "./modules/assignments/assignments.module"
 import { AttendanceModule } from "./modules/attendance/attendance.module"
 import { AiModule } from "./modules/ai/ai.module"
+import { AuditModule } from "./modules/audit/audit.module"
 import { ClassesModule } from "./modules/classes/classes.module"
 import { CalendarModule } from "./modules/calendar/calendar.module"
+import { CacheModule } from "./modules/cache/cache.module"
 import { ExamsModule } from "./modules/exams/exams.module"
 import { FinanceModule } from "./modules/finance/finance.module"
 import { GradesModule } from "./modules/grades/grades.module"
 import { NoticesModule } from "./modules/notices/notices.module"
 import { ParentsModule } from "./modules/parents/parents.module"
 import { NotificationsModule } from "./modules/notifications/notifications.module"
+import { QueueModule } from "./modules/queue/queue.module"
 import { ScheduleModule } from "./modules/schedule/schedule.module"
 import { StudentsModule } from "./modules/students/students.module"
 import { TeachersModule } from "./modules/teachers/teachers.module"
@@ -41,16 +44,19 @@ import { UploadModule } from "./modules/upload/upload.module"
     ParentsModule,
     NoticesModule,
     NotificationsModule,
+    QueueModule,
     ScheduleModule,
     ClassesModule,
     CalendarModule,
     AttendanceModule,
+    AuditModule,
     AssignmentsModule,
     GradesModule,
     ExamsModule,
     FinanceModule,
     UploadModule,
     AiModule,
+    CacheModule,
   ],
   controllers: [AppController],
   providers: [
