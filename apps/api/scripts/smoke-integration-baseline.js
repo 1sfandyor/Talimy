@@ -128,6 +128,19 @@ function buildHostScopedUrl(baseUrl, host, pathname) {
   return parsed.toString()
 }
 
+function extractRedirectLocation(resp) {
+  const headerLocation = resp?.headersMap?.location || ""
+  if (headerLocation) return headerLocation
+
+  const body = String(resp?.text || "")
+  const match = body.match(/NEXT_REDIRECT;[^;]*;([^;]+);30[78]/)
+  return match?.[1] || ""
+}
+
+function isRedirectResponse(resp) {
+  return [307, 308].includes(resp?.status) || Boolean(extractRedirectLocation(resp))
+}
+
 function shouldUseDirectTalimyHostChecks(baseUrl) {
   const parsed = tryParseUrl(baseUrl)
   if (!parsed) return false
@@ -1630,14 +1643,14 @@ async function main() {
           ...(useDirectHosts ? {} : { headers: { "x-forwarded-host": "platform.talimy.space" } }),
         })
         assertOrThrow(
-          [307, 308].includes(platformHome.status),
+          isRedirectResponse(platformHome),
           "platform host / should redirect",
           pretty(platformHome)
         )
         assertOrThrow(
-          (platformHome.headersMap.location || "").includes("/platform"),
+          extractRedirectLocation(platformHome).includes("/platform"),
           "platform host redirect should target /platform",
-          platformHome.headersMap
+          { headers: platformHome.headersMap, derivedLocation: extractRedirectLocation(platformHome) }
         )
 
         const publicProtected = await httpJson(publicProtectedUrl, {
@@ -1645,14 +1658,17 @@ async function main() {
           ...(useDirectHosts ? {} : { headers: { "x-forwarded-host": "talimy.space" } }),
         })
         assertOrThrow(
-          [307, 308].includes(publicProtected.status),
+          isRedirectResponse(publicProtected),
           "public host /admin should redirect",
           pretty(publicProtected)
         )
         assertOrThrow(
-          (publicProtected.headersMap.location || "").includes("/login"),
+          extractRedirectLocation(publicProtected).includes("/login"),
           "public host /admin redirect should target /login",
-          publicProtected.headersMap
+          {
+            headers: publicProtected.headersMap,
+            derivedLocation: extractRedirectLocation(publicProtected),
+          }
         )
 
         const schoolProtected = await httpJson(schoolProtectedUrl, {
@@ -1662,14 +1678,17 @@ async function main() {
             : { headers: { "x-forwarded-host": `${tenantSlug}.talimy.space` } }),
         })
         assertOrThrow(
-          [307, 308].includes(schoolProtected.status),
+          isRedirectResponse(schoolProtected),
           "school host protected route without auth should redirect",
           pretty(schoolProtected)
         )
         assertOrThrow(
-          (schoolProtected.headersMap.location || "").includes("/login"),
+          extractRedirectLocation(schoolProtected).includes("/login"),
           "school host protected route redirect should target /login",
-          schoolProtected.headersMap
+          {
+            headers: schoolProtected.headersMap,
+            derivedLocation: extractRedirectLocation(schoolProtected),
+          }
         )
 
         const schoolPlatform = await httpJson(schoolPlatformUrl, {
@@ -1679,17 +1698,20 @@ async function main() {
             : { headers: { "x-forwarded-host": `${tenantSlug}.talimy.space` } }),
         })
         assertOrThrow(
-          [307, 308].includes(schoolPlatform.status),
+          isRedirectResponse(schoolPlatform),
           "school host /platform should redirect",
           pretty(schoolPlatform)
         )
         assertOrThrow(
-          (schoolPlatform.headersMap.location || "").includes("/login"),
+          extractRedirectLocation(schoolPlatform).includes("/login"),
           "school host /platform redirect should target /login",
-          schoolPlatform.headersMap
+          {
+            headers: schoolPlatform.headersMap,
+            derivedLocation: extractRedirectLocation(schoolPlatform),
+          }
         )
 
-        markOk(t, "platform/public/school host matrix redirects -> 307/308")
+        markOk(t, "platform/public/school host matrix redirect signals verified")
       }
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`

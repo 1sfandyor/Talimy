@@ -127,7 +127,7 @@ export class PermifyPdpService {
       return await this.checkPermission(input, contextualTuples, configuredSchemaVersion)
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      if (this.isSchemaMissingError(reason)) {
+      if (this.isSchemaMissingError(reason) || this.isPermissionCheckNotFoundError(reason)) {
         this.logger.warn(`Permify schema missing for tenant ${input.tenantId}; bootstrapping schema`)
         await this.ensureTenantSchema(input.tenantId)
         return this.checkPermission(
@@ -152,7 +152,10 @@ export class PermifyPdpService {
         return await this.checkPermission(input, contextualTuples, "")
       } catch (retryError) {
         const retryReason = retryError instanceof Error ? retryError.message : String(retryError)
-        if (!this.isSchemaMissingError(retryReason)) {
+        if (
+          !this.isSchemaMissingError(retryReason) &&
+          !this.isPermissionCheckNotFoundError(retryReason)
+        ) {
           throw retryError
         }
 
@@ -225,7 +228,17 @@ export class PermifyPdpService {
     const normalized = reason.toLowerCase()
     return (
       normalized.includes("error_code_schema_not_found") ||
-      (normalized.includes("schema") && normalized.includes("not found"))
+      normalized.includes("schema_not_found") ||
+      (normalized.includes("schema") &&
+        (normalized.includes("not found") || normalized.includes("not_found")))
+    )
+  }
+
+  private isPermissionCheckNotFoundError(reason: string): boolean {
+    const normalized = reason.toLowerCase()
+    return (
+      normalized.includes("/permission/check") &&
+      (normalized.includes("not found") || normalized.includes("not_found"))
     )
   }
 
@@ -259,12 +272,33 @@ export class PermifyPdpService {
       this.logger.debug(`Permify tenancy.create skipped for tenant ${tenantId}: ${reason}`)
     }
 
-    const writeResponse = await this.withTimeout(
-      client.schema.write({
-        tenantId,
-        schema: PERMIFY_GENDER_SCHEMA,
-      })
-    )
+    let writeResponse: PermifySchemaWriteResponse | null = null
+    let writeError: unknown = null
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        writeResponse = await this.withTimeout(
+          client.schema.write({
+            tenantId,
+            schema: PERMIFY_GENDER_SCHEMA,
+          })
+        )
+        break
+      } catch (error) {
+        writeError = error
+        if (attempt >= 2) {
+          throw error
+        }
+        const reason = error instanceof Error ? error.message : String(error)
+        this.logger.warn(
+          `Permify schema.write retry for tenant ${tenantId} (attempt=${attempt + 1}) after: ${reason}`
+        )
+        await this.sleep(150)
+      }
+    }
+
+    if (!writeResponse) {
+      throw (writeError as Error) ?? new Error(`Permify schema write failed for tenant ${tenantId}`)
+    }
 
     const schemaVersion = this.extractSchemaVersion(writeResponse)
     if (schemaVersion) {
@@ -302,6 +336,12 @@ export class PermifyPdpService {
         clearTimeout(timeoutId)
       }
     }
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => {
+      setTimeout(resolve, ms)
+    })
   }
 
   private toPermifyEntityType(entity: GenderEntity): string {
