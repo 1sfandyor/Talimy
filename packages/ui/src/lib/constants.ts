@@ -1,7 +1,9 @@
 export const TALIMY_UI_SUPPORTED_EXPORTS = [
   "cn",
   "Badge",
+  "badgeVariants",
   "Button",
+  "buttonVariants",
   "Card",
   "CardHeader",
   "CardTitle",

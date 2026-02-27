@@ -20,7 +20,7 @@ export default async function MarketingHomePage() {
     <main className="mx-auto flex min-h-screen max-w-5xl items-center justify-center p-6">
       <Card className="w-full max-w-xl">
         <CardHeader>
-          <Badge variant="success" className="w-fit">
+          <Badge variant="secondary" className="w-fit">
             Talimy
           </Badge>
           <CardTitle>School Management Platform</CardTitle>

@@ -6,4 +6,4 @@ export * from "./components/ui/card"
 export * from "./components/ui/input"
 export * from "./components/ui/label"
 
-export const TALIMY_UI_PACKAGE_STATUS = "active-minimal" as const
+export const TALIMY_UI_PACKAGE_STATUS = "active-shadcn-base" as const
