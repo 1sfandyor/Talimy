@@ -15,6 +15,8 @@
     "db:migrate": "turbo db:migrate --filter=@talimy/database",
     "db:seed": "turbo db:seed --filter=@talimy/database",
     "db:studio": "turbo db:studio --filter=@talimy/database",
+    "smoke:integration:core": "bun run --cwd apps/api smoke:integration:core",
+    "smoke:integration:full": "bun run --cwd apps/api smoke:integration:full",
     "test": "turbo test",
     "test:e2e": "turbo test:e2e"
   },

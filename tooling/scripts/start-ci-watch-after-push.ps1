@@ -17,6 +17,40 @@ function Test-CommandExists {
   return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Get-GhExecutablePath {
+  $fromPath = Get-Command gh -ErrorAction SilentlyContinue
+  if ($fromPath -and $fromPath.Source) {
+    return $fromPath.Source
+  }
+
+  $candidatePaths = @(
+    @(
+      (Join-Path $env:ProgramFiles "GitHub CLI\gh.exe"),
+      (Join-Path $env:ProgramFiles "GitHub CLI\bin\gh.exe"),
+      (Join-Path ${env:ProgramFiles(x86)} "GitHub CLI\gh.exe"),
+      (Join-Path ${env:ProgramFiles(x86)} "GitHub CLI\bin\gh.exe"),
+      (Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI\gh.exe"),
+      (Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI\bin\gh.exe")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+  )
+
+  if ($candidatePaths.Count -gt 0) {
+    return $candidatePaths[0]
+  }
+
+  return $null
+}
+
+function Test-GhAuthenticated {
+  param([Parameter(Mandatory = $true)][string]$GhPath)
+  try {
+    & $GhPath auth status *> $null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
+}
+
 function Get-RepoRootFromScript {
   if (-not $PSScriptRoot) {
     throw "PSScriptRoot is not available."
@@ -133,8 +167,18 @@ if (-not (Test-CommandExists -Name "python")) {
   exit 0
 }
 
-if (-not (Test-CommandExists -Name "gh")) {
+$ghExePath = Get-GhExecutablePath
+if (-not $ghExePath) {
   Write-Info "gh CLI not found. Skipping watcher launch."
+  exit 0
+}
+$ghDir = Split-Path -Parent $ghExePath
+if (-not ($env:PATH -split ";" | Where-Object { $_ -eq $ghDir })) {
+  $env:PATH = "$ghDir;$env:PATH"
+}
+
+if (-not (Test-GhAuthenticated -GhPath $ghExePath)) {
+  Write-Info "gh CLI is installed but not authenticated. Run 'gh auth login' once, then push again."
   exit 0
 }
 
