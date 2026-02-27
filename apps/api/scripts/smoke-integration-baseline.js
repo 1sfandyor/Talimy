@@ -121,7 +121,9 @@ function signSyntheticAccessToken(identity, jwtAccessSecret) {
     exp: now + 600,
   }
 
-  const encodedHeader = base64UrlFromBuffer(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })))
+  const encodedHeader = base64UrlFromBuffer(
+    Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" }))
+  )
   const encodedPayload = base64UrlFromBuffer(Buffer.from(JSON.stringify(payload)))
   const body = `${encodedHeader}.${encodedPayload}`
   const signature = base64UrlFromBuffer(createHmac("sha256", jwtAccessSecret).update(body).digest())
@@ -1430,7 +1432,11 @@ async function main() {
           const tenantsResp = await httpJson(`${baseUrl}/api/tenants?page=1&limit=5`, {
             headers: { Authorization: `Bearer ${platformToken}` },
           })
-          assertOrThrow(tenantsResp.status === 200, "Tenants list expected 200", pretty(tenantsResp))
+          assertOrThrow(
+            tenantsResp.status === 200,
+            "Tenants list expected 200",
+            pretty(tenantsResp)
+          )
           markOk(t, "POST /auth/register (platform_admin bootstrap) + GET /api/tenants -> 200")
         }
       } else {
@@ -1442,7 +1448,9 @@ async function main() {
         if (
           !strictPlatformAuth &&
           loginResp.status === 401 &&
-          String(loginResp.json?.error?.message ?? "").toLowerCase().includes("invalid credentials")
+          String(loginResp.json?.error?.message ?? "")
+            .toLowerCase()
+            .includes("invalid credentials")
         ) {
           if (platformBootstrapKey) {
             const registerResp = await httpJson(`${baseUrl}/api/auth/register`, {
@@ -1488,7 +1496,11 @@ async function main() {
           const tenantsResp = await httpJson(`${baseUrl}/api/tenants?page=1&limit=5`, {
             headers: { Authorization: `Bearer ${platformToken}` },
           })
-          assertOrThrow(tenantsResp.status === 200, "Tenants list expected 200", pretty(tenantsResp))
+          assertOrThrow(
+            tenantsResp.status === 200,
+            "Tenants list expected 200",
+            pretty(tenantsResp)
+          )
           markOk(t, "POST /auth/login + GET /api/tenants -> 200")
         }
       }
@@ -1718,7 +1730,8 @@ async function main() {
             buildHostScopedUrl(webBaseUrl, `${tenantSlug}.talimy.space`, "/admin/dashboard")) ||
           `${webBaseUrl}/admin/dashboard`
         const schoolPlatformUrl =
-          (useDirectHosts && buildHostScopedUrl(webBaseUrl, `${tenantSlug}.talimy.space`, "/platform")) ||
+          (useDirectHosts &&
+            buildHostScopedUrl(webBaseUrl, `${tenantSlug}.talimy.space`, "/platform")) ||
           `${webBaseUrl}/platform`
 
         const platformHome = await httpJson(platformHomeUrl, {
@@ -1730,10 +1743,11 @@ async function main() {
           "platform host / should redirect",
           pretty(platformHome)
         )
+        const platformRedirect = extractRedirectLocation(platformHome)
         assertOrThrow(
-          extractRedirectLocation(platformHome).includes("/platform"),
-          "platform host redirect should target /platform",
-          { headers: platformHome.headersMap, derivedLocation: extractRedirectLocation(platformHome) }
+          platformRedirect.includes("/dashboard") || platformRedirect.includes("/platform"),
+          "platform host redirect should target /dashboard (or legacy /platform)",
+          { headers: platformHome.headersMap, derivedLocation: platformRedirect }
         )
 
         const publicProtected = await httpJson(publicProtectedUrl, {
@@ -1780,17 +1794,17 @@ async function main() {
             ? {}
             : { headers: { "x-forwarded-host": `${tenantSlug}.talimy.space` } }),
         })
+        const schoolPlatformRedirect = extractRedirectLocation(schoolPlatform)
+        const schoolPlatformDenied =
+          schoolPlatform.status === 404 ||
+          (isRedirectResponse(schoolPlatform) && schoolPlatformRedirect.includes("/login"))
         assertOrThrow(
-          isRedirectResponse(schoolPlatform),
-          "school host /platform should redirect",
-          pretty(schoolPlatform)
-        )
-        assertOrThrow(
-          extractRedirectLocation(schoolPlatform).includes("/login"),
-          "school host /platform redirect should target /login",
+          schoolPlatformDenied,
+          "school host /platform should be denied (404 or redirect to /login)",
           {
+            status: schoolPlatform.status,
             headers: schoolPlatform.headersMap,
-            derivedLocation: extractRedirectLocation(schoolPlatform),
+            derivedLocation: schoolPlatformRedirect,
           }
         )
 
