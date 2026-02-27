@@ -7,6 +7,8 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
+    "lint-staged": "lint-staged",
+    "commitlint": "commitlint",
     "prepare": "git config core.hooksPath .husky || true",
     "hooks:install": "git config core.hooksPath .husky || true",
     "infra:check": "bun run tooling/scripts/check-remote-infra.ts",
@@ -21,8 +23,11 @@
     "test:e2e": "turbo test:e2e"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
     "@talimy/eslint-config": "workspace:*",
     "@talimy/typescript-config": "workspace:*",
+    "lint-staged": "^16.2.6",
     "prettier": "^3.8.1",
     "shadcn": "^3.8.5",
     "turbo": "^2.8.1",
