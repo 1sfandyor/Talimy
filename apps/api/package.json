@@ -13,6 +13,7 @@
     "smoke:integration-baseline": "node scripts/smoke-integration-baseline.js",
     "smoke:integration:core": "node scripts/smoke-integration-baseline.js --strict-email=false --strict-sms=false",
     "smoke:integration:full": "node scripts/smoke-integration-baseline.js --strict-email=true --strict-sms=true",
+    "smoke:queue:dual-process": "node scripts/smoke-queue-dual-process.js",
     "permify:schema:publish": "node scripts/permify-publish-gender-schema.js",
     "start": "nest start",
     "start:dev": "nest start --watch",

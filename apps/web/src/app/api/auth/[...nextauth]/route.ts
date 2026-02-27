@@ -1,14 +1,9 @@
-import { NextResponse } from "next/server"
+import NextAuth from "next-auth"
 
-const notImplemented = {
-  success: false,
-  error: { code: "NOT_IMPLEMENTED", message: "NextAuth route is not wired yet" },
-} as const
+import { nextAuthConfig } from "@/lib/nextauth-config"
 
-export async function GET() {
-  return NextResponse.json(notImplemented, { status: 501 })
-}
+export const runtime = "nodejs"
 
-export async function POST() {
-  return NextResponse.json(notImplemented, { status: 501 })
-}
+const { handlers } = NextAuth(nextAuthConfig)
+
+export const { GET, POST } = handlers

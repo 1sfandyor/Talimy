@@ -3,6 +3,7 @@
 /* eslint-disable no-console */
 const fs = require("node:fs")
 const path = require("node:path")
+const { createHmac, randomUUID } = require("node:crypto")
 
 function loadDotEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return
@@ -100,6 +101,31 @@ function flattenJsonKeys(input, prefix = "") {
   }
 
   return prefix ? [prefix] : []
+}
+
+function base64UrlFromBuffer(input) {
+  return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+function signSyntheticAccessToken(identity, jwtAccessSecret) {
+  const now = Math.floor(Date.now() / 1000)
+  const payload = {
+    sub: identity.sub,
+    email: identity.email,
+    tenantId: identity.tenantId,
+    roles: identity.roles,
+    genderScope: identity.genderScope,
+    type: "access",
+    jti: randomUUID(),
+    iat: now,
+    exp: now + 600,
+  }
+
+  const encodedHeader = base64UrlFromBuffer(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })))
+  const encodedPayload = base64UrlFromBuffer(Buffer.from(JSON.stringify(payload)))
+  const body = `${encodedHeader}.${encodedPayload}`
+  const signature = base64UrlFromBuffer(createHmac("sha256", jwtAccessSecret).update(body).digest())
+  return `${body}.${signature}`
 }
 
 function hasPlaceholderText(resp, placeholderText) {
@@ -229,9 +255,11 @@ async function main() {
   )
   const strictPhase3 = getBoolArg("strict-phase3", false)
   const strictPlatformAuth = getBoolArg("strict-platform-auth", false)
+  const strictPermifyDeny = getBoolArg("strict-permify-deny", false)
   const apiLogFile = getArg("api-log-file", process.env.SMOKE_API_LOG_FILE || "")
   const workerLogFile = getArg("worker-log-file", process.env.SMOKE_WORKER_LOG_FILE || "")
   const strictWorkerTopology = getBoolArg("strict-worker-topology", false)
+  const jwtAccessSecret = getArg("jwt-access-secret", process.env.JWT_ACCESS_SECRET || "")
 
   const results = []
   const pushCase = (t) => {
@@ -401,6 +429,61 @@ async function main() {
         pretty(invalidResp)
       )
       markOk(t, "GET /api/students + invalid enrollment range -> 200/400")
+    } catch (error) {
+      t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
+    }
+  }
+
+  // Permify/Gender deny proof (school_admin male scope cannot create female student)
+  {
+    const t = pushCase(createCase("permify-gender-deny"))
+    try {
+      if (!jwtAccessSecret) {
+        if (strictPermifyDeny) {
+          throw new Error("JWT_ACCESS_SECRET (or --jwt-access-secret) is required for deny smoke")
+        }
+        markOk(t, "Optional deny smoke skipped (JWT_ACCESS_SECRET missing)")
+      } else {
+        const syntheticAccessToken = signSyntheticAccessToken(
+          {
+            sub: randomUUID(),
+            email: `integration-permify-deny+${Date.now()}@mezana.talimy.space`,
+            tenantId,
+            roles: ["school_admin"],
+            genderScope: "male",
+          },
+          jwtAccessSecret
+        )
+
+        const denyResp = await httpJson(`${baseUrl}/api/students`, {
+          method: "POST",
+          headers: {
+            ...authHeader(),
+            Authorization: `Bearer ${syntheticAccessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            tenantId,
+            userId: randomUUID(),
+            studentId: `SMOKE-DENY-${Date.now()}`,
+            gender: "female",
+            enrollmentDate: "2026-01-01",
+            fullName: "Permify Deny Smoke",
+          }),
+        })
+
+        if (strictPermifyDeny) {
+          assertOrThrow(denyResp.status === 403, "Strict deny smoke expected 403", pretty(denyResp))
+        } else {
+          assertOrThrow(
+            [403, 503].includes(denyResp.status),
+            "Deny smoke expected 403 (policy deny) or 503 (fail-closed)",
+            pretty(denyResp)
+          )
+        }
+
+        markOk(t, `POST /api/students deny check -> ${denyResp.status}`)
+      }
     } catch (error) {
       t.detail = `${error.message} ${JSON.stringify(error.extra ?? {})}`
     }
