@@ -58,25 +58,64 @@ async function terminateProcess(child, name) {
   child.kill("SIGKILL")
 }
 
+function quoteForShell(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`
+}
+
 function ensureDistBuild(apiRoot) {
+  const repoRoot = path.resolve(apiRoot, "..", "..")
+  const databaseDistEntry = path.join(repoRoot, "packages", "database", "dist", "index.js")
+  const sharedDistEntry = path.join(repoRoot, "packages", "shared", "dist", "index.js")
   const mainEntry = path.join(apiRoot, "dist", "main.js")
   const workerEntry = path.join(apiRoot, "dist", "worker.main.js")
-  if (fs.existsSync(mainEntry) && fs.existsSync(workerEntry)) {
+  if (
+    fs.existsSync(mainEntry) &&
+    fs.existsSync(workerEntry) &&
+    fs.existsSync(databaseDistEntry) &&
+    fs.existsSync(sharedDistEntry)
+  ) {
     return { mainEntry, workerEntry }
   }
 
-  console.log("[smoke:queue-dual] dist artifacts missing, running `bun run build`...")
-  const build = spawnSync("bun", ["run", "build"], {
-    cwd: apiRoot,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  })
-  if (build.status !== 0) {
-    throw new Error("apps/api build failed; cannot run dual-process smoke")
+  const buildSteps = [
+    {
+      label: "packages/database build",
+      cwd: repoRoot,
+      args: ["run", "--cwd", "packages/database", "build"],
+    },
+    {
+      label: "packages/shared build",
+      cwd: repoRoot,
+      args: ["run", "--cwd", "packages/shared", "build"],
+    },
+    {
+      label: "apps/api build",
+      cwd: apiRoot,
+      args: ["run", "build"],
+    },
+  ]
+
+  for (const step of buildSteps) {
+    console.log(`[smoke:queue-dual] missing dist artifacts, running \`bun ${step.args.join(" ")}\`...`)
+    const build = spawnSync("bun", step.args, {
+      cwd: step.cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    })
+    if (build.status !== 0) {
+      throw new Error(`${step.label} failed; cannot run dual-process smoke`)
+    }
   }
 
-  if (!fs.existsSync(mainEntry) || !fs.existsSync(workerEntry)) {
-    throw new Error("Build completed but dist/main.js or dist/worker.main.js is missing")
+  if (
+    !fs.existsSync(mainEntry) ||
+    !fs.existsSync(workerEntry) ||
+    !fs.existsSync(databaseDistEntry) ||
+    !fs.existsSync(sharedDistEntry)
+  ) {
+    throw new Error(
+      "Build completed but one or more runtime dist artifacts are missing (apps/api, packages/database, packages/shared)"
+    )
   }
 
   return { mainEntry, workerEntry }
@@ -108,13 +147,13 @@ async function main() {
   fs.writeFileSync(apiLogFile, "", "utf8")
   fs.writeFileSync(workerLogFile, "", "utf8")
 
-  const apiOut = fs.createWriteStream(apiLogFile, { flags: "a" })
-  const workerOut = fs.createWriteStream(workerLogFile, { flags: "a" })
-
   console.log(`[smoke:queue-dual] API log: ${apiLogFile}`)
   console.log(`[smoke:queue-dual] Worker log: ${workerLogFile}`)
 
-  const apiProcess = spawn(process.execPath, [mainEntry], {
+  const apiCommand = `${quoteForShell(process.execPath)} ${quoteForShell(mainEntry)} >> ${quoteForShell(apiLogFile)} 2>&1`
+  const workerCommand = `${quoteForShell(process.execPath)} ${quoteForShell(workerEntry)} >> ${quoteForShell(workerLogFile)} 2>&1`
+
+  const apiProcess = spawn(apiCommand, {
     cwd: apiRoot,
     env: {
       ...process.env,
@@ -123,12 +162,12 @@ async function main() {
       QUEUE_WORKERS_ENABLED: "false",
       APP_RUNTIME: "api",
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    shell: true,
+    stdio: "ignore",
+    windowsHide: true,
   })
-  apiProcess.stdout.pipe(apiOut)
-  apiProcess.stderr.pipe(apiOut)
 
-  const workerProcess = spawn(process.execPath, [workerEntry], {
+  const workerProcess = spawn(workerCommand, {
     cwd: apiRoot,
     env: {
       ...process.env,
@@ -136,14 +175,30 @@ async function main() {
       QUEUE_WORKERS_ENABLED: "true",
       APP_RUNTIME: "queue-worker",
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    shell: true,
+    stdio: "ignore",
+    windowsHide: true,
   })
-  workerProcess.stdout.pipe(workerOut)
-  workerProcess.stderr.pipe(workerOut)
+
+  let apiSpawnError = null
+  let workerSpawnError = null
+  apiProcess.on("error", (error) => {
+    apiSpawnError = error
+  })
+  workerProcess.on("error", (error) => {
+    workerSpawnError = error
+  })
 
   try {
     const startedAt = Date.now()
     while (Date.now() - startedAt < timeoutMs) {
+      if (apiSpawnError) {
+        throw new Error(`API process spawn failed: ${apiSpawnError.message}`)
+      }
+      if (workerSpawnError) {
+        throw new Error(`Worker process spawn failed: ${workerSpawnError.message}`)
+      }
+
       if (apiProcess.exitCode !== null) {
         throw new Error(`API process exited early (code=${apiProcess.exitCode})`)
       }
@@ -175,8 +230,6 @@ async function main() {
   } finally {
     await terminateProcess(apiProcess, "api")
     await terminateProcess(workerProcess, "worker")
-    apiOut.end()
-    workerOut.end()
   }
 }
 
