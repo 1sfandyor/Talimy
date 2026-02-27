@@ -21,6 +21,7 @@ const ROLE_PATH_PREFIXES = [
   ...PANEL_PREFIXES.student,
   ...PANEL_PREFIXES.parent,
 ] as const
+const PLATFORM_PATH_PREFIXES = [...PANEL_PREFIXES.platform] as const
 const AUTH_PUBLIC_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"])
 
 export function proxy(request: NextRequest) {
@@ -29,17 +30,9 @@ export function proxy(request: NextRequest) {
   const locale = resolveRequestLocale(request)
   const isApiOrAssetPath = shouldBypassLocaleHandling(pathname)
 
-  if (scope.kind === "platform" && pathname === "/") {
-    return finalizeResponse(request, scope, locale, redirect(request, "/platform"))
-  }
-
-  if (scope.kind === "platform" && isSchoolPanelPath(pathname)) {
-    return finalizeResponse(request, scope, locale, redirect(request, "/platform"))
-  }
-
   if (
     scope.kind === "public" &&
-    (pathname.startsWith("/platform") || isSchoolPanelPath(pathname))
+    (isAnyPlatformPath(pathname) || isSchoolPanelPath(pathname))
   ) {
     return finalizeResponse(request, scope, locale, redirect(request, "/login"))
   }
@@ -56,6 +49,17 @@ export function proxy(request: NextRequest) {
     return finalizeResponse(request, scope, locale, NextResponse.redirect(loginUrl))
   }
 
+  if (scope.kind === "platform") {
+    const canonicalPlatformPath = resolveCanonicalPlatformPath(pathname)
+    if (canonicalPlatformPath !== null && canonicalPlatformPath !== pathname) {
+      return finalizeResponse(request, scope, locale, rewrite(request, canonicalPlatformPath))
+    }
+
+    if (isSchoolPanelPath(pathname)) {
+      return finalizeResponse(request, scope, locale, rewrite(request, "/dashboard"))
+    }
+  }
+
   const forwardedHeaders = new Headers(request.headers)
   forwardedHeaders.set("x-locale", locale)
   forwardedHeaders.set("x-host-scope", scope.kind)
@@ -65,7 +69,7 @@ export function proxy(request: NextRequest) {
     if (pathname === "/") {
       return finalizeResponse(request, scope, locale, redirect(request, "/login"))
     }
-    if (pathname.startsWith("/platform")) {
+    if (isAnyPlatformPath(pathname)) {
       return finalizeResponse(request, scope, locale, redirect(request, "/login"))
     }
 
@@ -91,17 +95,27 @@ function isSchoolPanelPath(pathname: string): boolean {
   )
 }
 
+function isPlatformPanelPath(pathname: string): boolean {
+  return PLATFORM_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
+}
+
+function isLegacyPlatformPath(pathname: string): boolean {
+  return pathname === "/platform" || pathname.startsWith("/platform/")
+}
+
+function isAnyPlatformPath(pathname: string): boolean {
+  return isPlatformPanelPath(pathname) || isLegacyPlatformPath(pathname)
+}
+
 function requiresLightweightAuthGate(scope: HostScope, pathname: string): boolean {
   if (AUTH_PUBLIC_PATHS.has(pathname)) {
     return false
   }
 
-  if (pathname === "/") {
-    return false
-  }
-
   if (scope.kind === "platform") {
-    return pathname.startsWith("/platform")
+    return pathname === "/" || isAnyPlatformPath(pathname)
   }
 
   if (scope.kind === "school") {
@@ -116,12 +130,33 @@ function hasPlaceholderAuthContext(request: NextRequest): boolean {
 }
 
 function resolvePanelScope(pathname: string): string {
-  if (pathname.startsWith("/platform")) return "platform"
+  if (isAnyPlatformPath(pathname)) return "platform"
   if (pathname.startsWith("/admin")) return "admin"
   if (pathname.startsWith("/teacher")) return "teacher"
   if (pathname.startsWith("/student")) return "student"
   if (pathname.startsWith("/parent")) return "parent"
   return "public"
+}
+
+function resolveCanonicalPlatformPath(pathname: string): string | null {
+  if (pathname === "/") {
+    return "/dashboard"
+  }
+
+  if (pathname === "/platform") {
+    return "/dashboard"
+  }
+
+  if (!pathname.startsWith("/platform/")) {
+    return null
+  }
+
+  const rewrittenPath = pathname.slice("/platform".length)
+  if (isPlatformPanelPath(rewrittenPath)) {
+    return rewrittenPath
+  }
+
+  return "/dashboard"
 }
 
 function shouldBypassLocaleHandling(pathname: string): boolean {
@@ -182,6 +217,12 @@ function redirect(request: NextRequest, pathname: string): NextResponse {
   const url = request.nextUrl.clone()
   url.pathname = pathname
   return NextResponse.redirect(url)
+}
+
+function rewrite(request: NextRequest, pathname: string): NextResponse {
+  const url = request.nextUrl.clone()
+  url.pathname = pathname
+  return NextResponse.rewrite(url)
 }
 
 export const config = {

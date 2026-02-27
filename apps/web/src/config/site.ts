@@ -19,7 +19,7 @@ export const DEFAULT_LOCALE: AppLocale = "uz"
 export type AppPanel = "platform" | "admin" | "teacher" | "student" | "parent"
 
 export const PANEL_PREFIXES = {
-  platform: ["/platform"] as const,
+  platform: ["/dashboard", "/schools", "/settings"] as const,
   admin: ["/admin"] as const,
   teacher: ["/teacher"] as const,
   student: ["/student"] as const,

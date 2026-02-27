@@ -9,7 +9,7 @@ export default async function MarketingHomePage() {
   const hostScope = resolveHostScopeFromHeaders(requestHeaders)
 
   if (hostScope.kind === "platform") {
-    redirect("/platform")
+    redirect("/dashboard")
   }
 
   if (hostScope.kind === "school") {
