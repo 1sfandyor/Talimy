@@ -1,16 +1,10 @@
 export const TALIMY_UI_SUPPORTED_EXPORTS = [
   "cn",
-  "Badge",
-  "badgeVariants",
-  "Button",
-  "buttonVariants",
-  "Card",
-  "CardHeader",
-  "CardTitle",
-  "CardDescription",
-  "CardContent",
-  "CardFooter",
-  "Input",
-  "Label",
   "TALIMY_UI_PACKAGE_STATUS",
+  "TALIMY_UI_COMPONENT_SOURCE",
+  "TALIMY_UI_LOCAL_WEB_COMPONENTS_DEPRECATED",
 ] as const
+
+export const TALIMY_UI_COMPONENT_SOURCE = "packages/ui" as const
+
+export const TALIMY_UI_LOCAL_WEB_COMPONENTS_DEPRECATED = true as const
