@@ -47,6 +47,13 @@ Status: In execution (track by phase/task status markers below)
 3. Update the corresponding Task section `- **Status**` marker (if present).
 4. Add or refresh Evidence paths for the changed status.
 
+## 2.5 External Provider Gate Policy (temporary)
+
+1. `email-runtime` and `sms-runtime` smoke checks are external-provider dependent and may stay non-blocking until provider verification is completed.
+2. Daily/regular smoke should use `bun run --cwd apps/api smoke:integration:core` (forces `--strict-email=false --strict-sms=false`).
+3. Full provider validation should use `bun run --cwd apps/api smoke:integration:full` after Resend domain verification and Twilio sender verification are completed.
+4. This policy is temporary and must be removed after external verification is done.
+
 ## 3. Architecture constraints (fixed)
 
 1. Single web app (`apps/web`) + proxy subdomain routing.

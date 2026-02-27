@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:error-contract": "node scripts/smoke-error-contract.js",
     "smoke:integration-baseline": "node scripts/smoke-integration-baseline.js",
+    "smoke:integration:core": "node scripts/smoke-integration-baseline.js --strict-email=false --strict-sms=false",
+    "smoke:integration:full": "node scripts/smoke-integration-baseline.js --strict-email=true --strict-sms=true",
     "permify:schema:publish": "node scripts/permify-publish-gender-schema.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
