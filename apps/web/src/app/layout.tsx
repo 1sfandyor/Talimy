@@ -9,6 +9,7 @@ import { AuthProvider } from "@/providers/auth-provider"
 import { IntlProvider } from "@/providers/intl-provider"
 import { QueryProvider } from "@/providers/query-provider"
 import { SocketProvider } from "@/providers/socket-provider"
+import { ToastProvider } from "@/providers/toast-provider"
 import { ThemeProvider } from "@/providers/theme-provider"
 import { TrpcProvider } from "@/lib/trpc/provider"
 
@@ -39,7 +40,10 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <IntlProvider locale={locale} messages={messages}>
               <QueryProvider>
                 <TrpcProvider>
-                  <SocketProvider>{children}</SocketProvider>
+                  <SocketProvider>
+                    {children}
+                    <ToastProvider />
+                  </SocketProvider>
                 </TrpcProvider>
               </QueryProvider>
             </IntlProvider>

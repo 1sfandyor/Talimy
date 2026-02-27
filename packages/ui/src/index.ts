@@ -1,8 +1,9 @@
 export { cn } from "./lib/utils"
 export * from "./lib/constants"
+export * from "./components/ui/badge"
+export * from "./components/ui/button"
+export * from "./components/ui/card"
+export * from "./components/ui/input"
+export * from "./components/ui/label"
 
-/**
- * Shared UI package is scaffolded and package-ready, but most component stubs are not implemented yet.
- * Consumers should import only explicitly exported symbols until the component surface is completed.
- */
-export const TALIMY_UI_PACKAGE_STATUS = "scaffold" as const
+export const TALIMY_UI_PACKAGE_STATUS = "active-minimal" as const

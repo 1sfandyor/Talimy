@@ -1,5 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@talimy/ui"
 
 import { resolveHostScopeFromHeaders } from "@/lib/server/request-host"
 
@@ -17,10 +18,18 @@ export default async function MarketingHomePage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl items-center justify-center p-6">
-      <div className="text-center">
-        <h1 className="text-3xl font-semibold text-slate-900">Talimy</h1>
-        <p className="mt-2 text-sm text-slate-600">School Management Platform</p>
-      </div>
+      <Card className="w-full max-w-xl">
+        <CardHeader>
+          <Badge variant="success" className="w-fit">
+            Talimy
+          </Badge>
+          <CardTitle>School Management Platform</CardTitle>
+          <CardDescription>Multi-tenant system for Uzbekistan schools.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-slate-600">
+          Marketing pages are in progress. Core API and infra smoke checks are already active.
+        </CardContent>
+      </Card>
     </main>
   )
 }
