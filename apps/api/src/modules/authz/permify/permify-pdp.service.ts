@@ -7,7 +7,9 @@ import {
   PERMIFY_CHECK_RESULT,
   type PermifyClient,
   type PermifyPermissionCheckResponse,
+  type PermifySchemaWriteResponse,
 } from "./permify-sdk"
+import { PERMIFY_GENDER_SCHEMA } from "./permify-gender-schema"
 
 type GenderEntity = "student" | "teacher"
 type GenderAction = "list" | "create" | "update"
@@ -27,6 +29,8 @@ export class PermifyPdpService {
   private readonly logger = new Logger(PermifyPdpService.name)
   private readonly cfg = getPermifyConfig()
   private client: PermifyClient | null = null
+  private readonly schemaBootstrapByTenant = new Map<string, Promise<void>>()
+  private readonly runtimeSchemaVersionByTenant = new Map<string, string>()
 
   async assertGenderAccess(input: PermifyCheckInput): Promise<void> {
     if (!this.cfg.enabled || !this.cfg.grpcEndpoint) {
@@ -116,16 +120,27 @@ export class PermifyPdpService {
       subject: { type: string; id: string; relation: string }
     }>
   ): Promise<PermifyPermissionCheckResponse> {
-    const configuredSchemaVersion = this.cfg.schemaVersion ?? ""
+    const configuredSchemaVersion =
+      this.runtimeSchemaVersionByTenant.get(input.tenantId) ?? this.cfg.schemaVersion ?? ""
 
     try {
       return await this.checkPermission(input, contextualTuples, configuredSchemaVersion)
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      if (this.isSchemaMissingError(reason)) {
+        this.logger.warn(`Permify schema missing for tenant ${input.tenantId}; bootstrapping schema`)
+        await this.ensureTenantSchema(input.tenantId)
+        return this.checkPermission(
+          input,
+          contextualTuples,
+          this.runtimeSchemaVersionByTenant.get(input.tenantId) ?? ""
+        )
+      }
+
       if (!configuredSchemaVersion) {
         throw error
       }
 
-      const reason = error instanceof Error ? error.message : String(error)
       if (!this.shouldRetryWithoutSchemaVersion(reason)) {
         throw error
       }
@@ -133,7 +148,24 @@ export class PermifyPdpService {
       this.logger.warn(
         `Permify check retrying without pinned schema version after error: ${reason}`
       )
-      return this.checkPermission(input, contextualTuples, "")
+      try {
+        return await this.checkPermission(input, contextualTuples, "")
+      } catch (retryError) {
+        const retryReason = retryError instanceof Error ? retryError.message : String(retryError)
+        if (!this.isSchemaMissingError(retryReason)) {
+          throw retryError
+        }
+
+        this.logger.warn(
+          `Permify schema missing after schemaVersion fallback for tenant ${input.tenantId}; bootstrapping schema`
+        )
+        await this.ensureTenantSchema(input.tenantId)
+        return this.checkPermission(
+          input,
+          contextualTuples,
+          this.runtimeSchemaVersionByTenant.get(input.tenantId) ?? ""
+        )
+      }
     }
   }
 
@@ -186,6 +218,70 @@ export class PermifyPdpService {
       normalized.includes("snap") ||
       normalized.includes("not found") ||
       normalized.includes("invalid argument")
+    )
+  }
+
+  private isSchemaMissingError(reason: string): boolean {
+    const normalized = reason.toLowerCase()
+    return (
+      normalized.includes("error_code_schema_not_found") ||
+      (normalized.includes("schema") && normalized.includes("not found"))
+    )
+  }
+
+  private async ensureTenantSchema(tenantId: string): Promise<void> {
+    const inFlight = this.schemaBootstrapByTenant.get(tenantId)
+    if (inFlight) {
+      return inFlight
+    }
+
+    const bootstrapPromise = this.bootstrapTenantSchema(tenantId).finally(() => {
+      this.schemaBootstrapByTenant.delete(tenantId)
+    })
+
+    this.schemaBootstrapByTenant.set(tenantId, bootstrapPromise)
+    return bootstrapPromise
+  }
+
+  private async bootstrapTenantSchema(tenantId: string): Promise<void> {
+    const client = this.getClient()
+
+    try {
+      await this.withTimeout(
+        client.tenancy.create({
+          id: tenantId,
+          name: `Tenant ${tenantId}`,
+        })
+      )
+    } catch (error) {
+      // Tenancy may already exist; schema write below remains authoritative.
+      const reason = error instanceof Error ? error.message : String(error)
+      this.logger.debug(`Permify tenancy.create skipped for tenant ${tenantId}: ${reason}`)
+    }
+
+    const writeResponse = await this.withTimeout(
+      client.schema.write({
+        tenantId,
+        schema: PERMIFY_GENDER_SCHEMA,
+      })
+    )
+
+    const schemaVersion = this.extractSchemaVersion(writeResponse)
+    if (schemaVersion) {
+      this.runtimeSchemaVersionByTenant.set(tenantId, schemaVersion)
+    }
+
+    this.logger.log(
+      `Permify schema ensured for tenant ${tenantId}${schemaVersion ? ` (schemaVersion=${schemaVersion})` : ""}`
+    )
+  }
+
+  private extractSchemaVersion(response: PermifySchemaWriteResponse): string {
+    return (
+      response?.schemaVersion ??
+      response?.schema_version ??
+      response?.metadata?.schemaVersion ??
+      ""
     )
   }
 

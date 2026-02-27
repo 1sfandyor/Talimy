@@ -3,12 +3,11 @@ import type { NextRequest } from "next/server"
 
 import {
   APP_LOCALE_COOKIE,
-  AUTH_COOKIE_NAMES,
   DEFAULT_LOCALE,
   PANEL_PREFIXES,
-  RESERVED_SUBDOMAINS,
   resolveLocaleFromAcceptLanguage,
 } from "./src/config/site"
+import { hasAuthContext, resolveHostScopeFromHeaders } from "./src/lib/server/request-host"
 
 type HostScope =
   | { kind: "api" }
@@ -16,7 +15,6 @@ type HostScope =
   | { kind: "public" }
   | { kind: "school"; tenantSlug: string }
 
-const RESERVED_SUBDOMAIN_SET = new Set<string>(RESERVED_SUBDOMAINS)
 const ROLE_PATH_PREFIXES = [
   ...PANEL_PREFIXES.admin,
   ...PANEL_PREFIXES.teacher,
@@ -84,93 +82,7 @@ export function proxy(request: NextRequest) {
 }
 
 function resolveHostScope(request: NextRequest): HostScope {
-  const rawHost = resolveRequestHost(request)
-  const hostname = rawHost.toLowerCase().split(":")[0] ?? ""
-
-  if (hostname === "api.talimy.space") {
-    return { kind: "api" }
-  }
-
-  if (hostname === "platform.talimy.space") {
-    return { kind: "platform" }
-  }
-
-  if (
-    hostname === "talimy.space" ||
-    hostname === "www.talimy.space" ||
-    hostname === "localhost" ||
-    hostname === "127.0.0.1"
-  ) {
-    return { kind: "public" }
-  }
-
-  if (hostname.endsWith(".localhost")) {
-    const slug = hostname.slice(0, -".localhost".length)
-    if (slug && !RESERVED_SUBDOMAIN_SET.has(slug)) {
-      return { kind: "school", tenantSlug: slug }
-    }
-    return { kind: "public" }
-  }
-
-  if (hostname.endsWith(".talimy.space")) {
-    const slug = hostname.slice(0, -".talimy.space".length)
-    if (slug && !RESERVED_SUBDOMAIN_SET.has(slug)) {
-      return { kind: "school", tenantSlug: slug }
-    }
-  }
-
-  return { kind: "public" }
-}
-
-function resolveRequestHost(request: NextRequest): string {
-  const candidates = [
-    ...splitHostHeaderValues(request.headers.get("x-forwarded-host")),
-    ...extractForwardedHeaderHosts(request.headers.get("forwarded")),
-    ...splitHostHeaderValues(request.headers.get("host")),
-  ]
-
-  const preferred =
-    candidates.find((candidate) => isRecognizedTenantHost(candidate)) ?? candidates[0] ?? ""
-  return preferred
-}
-
-function splitHostHeaderValues(rawHeader: string | null): string[] {
-  if (!rawHeader) {
-    return []
-  }
-
-  return rawHeader
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-}
-
-function extractForwardedHeaderHosts(rawHeader: string | null): string[] {
-  if (!rawHeader) {
-    return []
-  }
-
-  return rawHeader
-    .split(",")
-    .map((segment) => {
-      const match = segment.match(/(?:^|;)\s*host="?([^";,]+)"?/i)
-      return match?.[1]?.trim() ?? ""
-    })
-    .filter(Boolean)
-}
-
-function isRecognizedTenantHost(rawHost: string): boolean {
-  const hostname = rawHost.toLowerCase().split(":")[0] ?? ""
-  return (
-    hostname === "talimy.space" ||
-    hostname === "www.talimy.space" ||
-    hostname === "platform.talimy.space" ||
-    hostname === "api.talimy.space" ||
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.endsWith(".talimy.space") ||
-    hostname.endsWith(".localhost")
-  )
+  return resolveHostScopeFromHeaders(request.headers) as HostScope
 }
 
 function isSchoolPanelPath(pathname: string): boolean {
@@ -200,11 +112,7 @@ function requiresLightweightAuthGate(scope: HostScope, pathname: string): boolea
 }
 
 function hasPlaceholderAuthContext(request: NextRequest): boolean {
-  if (request.headers.has("authorization")) {
-    return true
-  }
-
-  return AUTH_COOKIE_NAMES.some((cookieName) => Boolean(request.cookies.get(cookieName)?.value))
+  return hasAuthContext(request.headers, request.cookies)
 }
 
 function resolvePanelScope(pathname: string): string {

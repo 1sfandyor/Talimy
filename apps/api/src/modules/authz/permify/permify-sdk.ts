@@ -35,9 +35,35 @@ export type PermifyPermissionCheckResponse = {
   can: number
 }
 
+export type PermifySchemaWriteRequest = {
+  tenantId: string
+  schema: string
+}
+
+export type PermifySchemaWriteResponse = {
+  schemaVersion?: string
+  schema_version?: string
+  metadata?: {
+    schemaVersion?: string
+  }
+}
+
+export type PermifyTenancyCreateRequest = {
+  id: string
+  name: string
+}
+
+export type PermifyTenancyCreateResponse = Record<string, unknown>
+
 export type PermifyClient = {
   permission: {
     check(request: PermifyPermissionCheckRequest): Promise<PermifyPermissionCheckResponse>
+  }
+  schema: {
+    write(request: PermifySchemaWriteRequest): Promise<PermifySchemaWriteResponse>
+  }
+  tenancy: {
+    create(request: PermifyTenancyCreateRequest): Promise<PermifyTenancyCreateResponse>
   }
 }
 

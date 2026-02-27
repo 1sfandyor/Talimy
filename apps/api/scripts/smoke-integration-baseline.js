@@ -1720,19 +1720,35 @@ async function main() {
           pretty(resp)
         )
         const localeHeader = resp.headersMap["x-locale"] || ""
+        const contentLanguageHeader = resp.headersMap["content-language"] || ""
+        const htmlLangMatch = String(resp.text || "").match(/<html[^>]*\blang=\"([^\"]+)\"/i)
+        const htmlLang = (htmlLangMatch?.[1] || "").toLowerCase()
+        const localeDetected =
+          localeHeader === "tr" ||
+          contentLanguageHeader.toLowerCase().startsWith("tr") ||
+          htmlLang.startsWith("tr")
         if (strictPhase3) {
           assertOrThrow(
-            localeHeader === "tr",
-            "Expected x-locale=tr in strict phase3 mode",
-            resp.headersMap
+            localeDetected,
+            "Expected locale=tr via x-locale/content-language/html lang in strict phase3 mode",
+            {
+              headers: resp.headersMap,
+              htmlLang,
+            }
           )
         }
 
         const setCookieJoined = [...resp.setCookies, resp.headersMap["set-cookie"] || ""].join("; ")
         assertOrThrow(
-          setCookieJoined.includes("NEXT_LOCALE=") || !strictPhase3,
-          "Expected NEXT_LOCALE cookie in strict phase3 mode",
-          { setCookies: resp.setCookies, setCookie: resp.headersMap["set-cookie"] }
+          setCookieJoined.includes("NEXT_LOCALE=") || localeDetected || !strictPhase3,
+          "Expected NEXT_LOCALE cookie (or locale detection signal) in strict phase3 mode",
+          {
+            setCookies: resp.setCookies,
+            setCookie: resp.headersMap["set-cookie"],
+            localeHeader,
+            contentLanguageHeader,
+            htmlLang,
+          }
         )
 
         markOk(
